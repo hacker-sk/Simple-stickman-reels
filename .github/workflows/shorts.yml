@@ -21,6 +21,10 @@ on:
         description: "Finished Hindi script, used word for word. Leave empty to write the script from the idea."
         required: false
         default: ""
+      package:
+        description: "Finished package JSON from Claude chat (title, description, mood, hook, scenes with narration + image_prompt). Skips topic, script and image-prompt steps. Leave empty normally."
+        required: false
+        default: ""
       script_mode:
         description: "Automatic topics only: script style"
         required: false
@@ -84,6 +88,7 @@ jobs:
         env:
           IDEA: ${{ inputs.idea }}
           SCRIPT: ${{ inputs.script }}
+          PACKAGE: ${{ inputs.package }}
           SCRIPT_MODE: ${{ inputs.script_mode }}
           ART_STYLE: ${{ inputs.art_style }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
