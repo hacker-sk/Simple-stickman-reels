@@ -1,11 +1,48 @@
 name: Hindi Shorts
 
+# Hindi portrait Shorts, fully on GitHub Actions: topic -> script -> image prompts -> render -> Buffer.
+# Manual run (GitHub Mobile): Actions > Hindi Shorts > Run workflow, then fill in an idea OR a finished script (or leave both empty).
+# Scheduled run: every 3.5 hours between 10:00 and 22:00 IST. It only runs when the repository variable
+# SHORTS_SCHEDULE_ENABLED is "true", so it stays off until the n8n schedule has been switched off.
+
 on:
+  schedule:
+    - cron: "30 4 * * *"    # 10:00 IST
+    - cron: "0 8 * * *"     # 13:30 IST
+    - cron: "30 11 * * *"   # 17:00 IST
+    - cron: "0 15 * * *"    # 20:30 IST
   workflow_dispatch:
     inputs:
+      idea:
+        description: "Idea for the video (Hindi, Hinglish or English). Leave empty for an automatic topic."
+        required: false
+        default: ""
       script:
-        description: "Finished script JSON: title, description, hashtags, tags, mood, scenes"
-        required: true
+        description: "Finished Hindi script, used word for word. Leave empty to write the script from the idea."
+        required: false
+        default: ""
+      script_mode:
+        description: "Automatic topics only: script style"
+        required: false
+        type: choice
+        default: auto
+        options:
+          - auto
+          - truth
+          - story
+      art_style:
+        description: "Art style"
+        required: false
+        type: choice
+        default: painterly
+        options:
+          - painterly
+          - sepia
+          - night
+          - golden
+
+permissions:
+  contents: read
 
 concurrency:
   group: hindi-shorts
@@ -13,8 +50,9 @@ concurrency:
 
 jobs:
   make:
+    if: github.event_name != 'schedule' || vars.SHORTS_SCHEDULE_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     permissions:
       contents: write
     steps:
@@ -42,8 +80,12 @@ jobs:
           key: whisperx-large-v3-turbo-hi-v1
 
       - name: Make the video and publish it
+        id: make
         env:
+          IDEA: ${{ inputs.idea }}
           SCRIPT: ${{ inputs.script }}
+          SCRIPT_MODE: ${{ inputs.script_mode }}
+          ART_STYLE: ${{ inputs.art_style }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
@@ -74,26 +116,34 @@ jobs:
           COLAB_URL_SOURCE: ${{ secrets.COLAB_URL_SOURCE }}
           COLAB_TOKEN: ${{ secrets.COLAB_TOKEN }}
           BUFFER_TOKEN: ${{ secrets.BUFFER_TOKEN }}
-          BUFFER_YOUTUBE_CHANNEL_ID: ${{ secrets.BUFFER_YOUTUBE_CHANNEL_ID }}
-          BUFFER_INSTAGRAM_CHANNEL_ID: ${{ secrets.BUFFER_INSTAGRAM_CHANNEL_ID }}
-          BUFFER_FACEBOOK_CHANNEL_ID: ${{ secrets.BUFFER_FACEBOOK_CHANNEL_ID }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BUFFER_YOUTUBE_CHANNEL_ID: ${{ vars.BUFFER_YOUTUBE_CHANNEL_ID || secrets.BUFFER_YOUTUBE_CHANNEL_ID }}
+          BUFFER_INSTAGRAM_CHANNEL_ID: ${{ vars.BUFFER_INSTAGRAM_CHANNEL_ID || secrets.BUFFER_INSTAGRAM_CHANNEL_ID }}
+          BUFFER_FACEBOOK_CHANNEL_ID: ${{ vars.BUFFER_FACEBOOK_CHANNEL_ID || secrets.BUFFER_FACEBOOK_CHANNEL_ID }}
           IMAGE_PROVIDER_ORDER: ${{ vars.IMAGE_PROVIDER_ORDER }}
         run: python pipeline/run_shorts.py
 
       - name: Keep a copy as a release
-        if: success()
+        if: always() && steps.make.outputs.video_ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "hindi-video-${{ github.run_number }}" output/video.mp4 \
             --title "Hindi video ${{ github.run_number }}" --notes "Made by run ${{ github.run_id }}" || true
+          # keep only the 20 newest releases
           gh release list --limit 100 --json tagName --jq '.[20:][].tagName' | xargs -r -I{} gh release delete {} --yes --cleanup-tag || true
 
-      - name: Tell me on Telegram it failed
-        if: failure()
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python pipeline/run_shorts.py --notify-failure
+      - name: Save topic history
+        if: always() && steps.make.outputs.state_changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/topic_history.json
+          if git diff --cached --quiet; then echo "No history change"; exit 0; fi
+          git commit -m "Update topic history (run ${{ github.run_id }})"
+          # Runs never overlap (concurrency group), so a rebase onto the latest main is always clean.
+          for i in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin main && git push origin HEAD:main; then exit 0; fi
+            sleep $((i * 5))
+          done
+          echo "::error::Could not save state/topic_history.json after 5 tries"
+          exit 1
