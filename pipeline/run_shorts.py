@@ -6,6 +6,8 @@ Pipeline: input -> topic -> Hindi script -> image prompts -> render (existing re
 
 Inputs (environment, set by .github/workflows/shorts.yml):
   IDEA, SCRIPT          manual idea / finished script (both empty = scheduled run, a topic is picked automatically)
+  PACKAGE               finished package JSON from Claude chat (title, description, mood, hook, scenes with narration +
+                        image_prompt, see pipeline/package.py); skips topic, script and image-prompt steps
   SCRIPT_MODE           auto | truth | story   (scheduled runs only)
   ART_STYLE             painterly (default) | sepia | night | golden
   IMAGE_PROVIDER_ORDER  optional, copied to HINDI_IMAGE_ORDER for the renderer
@@ -20,7 +22,7 @@ import traceback
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from pipeline import buffer, image_prompts, script, styles, topics  # noqa: E402
+from pipeline import buffer, image_prompts, package, script, styles, topics  # noqa: E402
 
 OUT_DIR = os.environ.get('OUT_DIR', 'output')
 WORK_DIR = os.environ.get('WORK_DIR', 'work')
@@ -60,12 +62,15 @@ def summary(lines):
         print(text)
 
 
-def build_job(prep, scenes, style_key, style, mood):
-    """Render payload. The renderer reads it from the job file (payload.job_path)."""
+def build_job(prep, scenes, style_key, style, mood, hook=None):
+    """Render payload. The renderer reads it from the job file (payload.job_path).
+
+    Same keys as n8n's 'Build Render Payload' (no style_look: the image prompts already carry the style),
+    plus an optional hook for packages that bring their own."""
     job = dict(VOICE)
-    job.update({'title': prep['title'], 'mood': mood, 'art_style': style['name'], 'scenes': scenes,
-                # styles with a fixed opening/closing wrapper must stay short, so they get no extra look prefix
-                'style_look': '' if style.get('open') else style['look']})
+    job.update({'title': prep['title'], 'mood': mood, 'art_style': style['name'], 'scenes': scenes})
+    if hook:
+        job['hook'] = hook
     return job
 
 
@@ -144,9 +149,14 @@ def main():
     lines = ['## Hindi Shorts run']
     try:
         idea, own_script = env('IDEA'), env('SCRIPT')
-        style_key, style = styles.get_style(env('ART_STYLE') or None)
-        ctx = None
-        if idea or own_script:
+        ctx, pkg, hook, topic_text = None, None, None, ''
+        if env('PACKAGE'):
+            pkg = package.parse(env('PACKAGE'))
+            hook = pkg['hook']
+        style_key, style = styles.get_style((pkg and pkg['style_key']) or env('ART_STYLE') or None)
+        if pkg:
+            lines.append('- Source: finished package from chat (no topic, script or image-prompt step)')
+        elif idea or own_script:
             topic_text, provided = script.parse_manual(idea, own_script)
             lines.append('- Source: manual ' + ('script' if provided else 'idea'))
         else:
@@ -155,18 +165,21 @@ def main():
             topic_text, angle = topics.generate_topic(ctx)
             provided = False
             lines += ['- Source: scheduled, niche **' + ctx['niche'] + '**, ' + ctx['scriptMode'] + ' mode, ' + ctx['shape'] + ' shape']
-        log('topic: ' + topic_text[:80].replace('\n', ' '))
-
-        data = script.write_script(topic_text, provided, ctx)
-        prep = script.prepare_narration(data)
-        if not prep['scenes']:
-            raise RuntimeError('The script has no scenes')
-        mood = prep['mood'] if prep['mood'] in script.MOODS else 'emotional'
-        chunks = script.number_chunks(prep, style_key)
-        scenes, _story = image_prompts.write_image_prompts(prep, chunks, style_key)
+        if pkg:
+            prep, scenes = pkg['prep'], pkg['scenes']
+            mood = prep['mood']
+        else:
+            log('topic: ' + topic_text[:80].replace('\n', ' '))
+            data = script.write_script(topic_text, provided, ctx)
+            prep = script.prepare_narration(data)
+            if not prep['scenes']:
+                raise RuntimeError('The script has no scenes')
+            mood = prep['mood'] if prep['mood'] in script.MOODS else 'emotional'
+            chunks = script.number_chunks(prep, style_key)
+            scenes, _story = image_prompts.write_image_prompts(prep, chunks, style_key)
         lines += ['- Title: ' + prep['title'], '- Style: ' + style['name'] + ', mood ' + mood + ', ' + str(len(scenes)) + ' scenes']
 
-        run_renderer(build_job(prep, scenes, style_key, style, mood))
+        run_renderer(build_job(prep, scenes, style_key, style, mood, hook))
         result, urls, duration = validate_output()
         set_output('video_ready', 'true')
         lines += ['- Video: ' + str(round(duration, 1)) + 's, ' + str(result.get('size_mb')) + ' MB', '- Hosted: ' + ', '.join(urls)]
@@ -176,7 +189,7 @@ def main():
         lines += ['- Buffer scheduled: ' + (', '.join(scheduled) or 'nothing')]
         for w in (out or {}).get('warnings') or []:
             lines.append('- Warning: ' + w)
-        if scheduled:
+        if scheduled and not pkg:  # a package brings its own idea; n8n never recorded those either
             topics.record_used(topic_text, ctx['niche'] if ctx else 'manual')
             set_output('state_changed', 'true')
             lines.append('- Topic history updated')
