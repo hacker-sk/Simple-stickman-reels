@@ -1,11 +1,12 @@
 {
   "flowUrl": "https://labs.google/fx/tools/flow",
-  "extensionPage": "popup.html",
+  "extensionPage": "sidepanel/sidepanel.html",
   "timeoutMinutes": 90,
   "settleSeconds": 45,
-  "doneText": "completed|finished|all done",
+  "doneText": "generated|Done:",
   "selectors": {
-    "promptInput": "textarea",
-    "startButton": "text=/start|run|generate/i"
+    "promptInput": "#prompts",
+    "startButton": "#run",
+    "status": "#status"
   }
 }
