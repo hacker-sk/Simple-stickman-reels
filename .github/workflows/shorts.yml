@@ -5,6 +5,12 @@ name: Hindi Shorts
 # Package from Claude chat: pushing jobs/package.json starts a run that uses it as the package input (renders and posts to Buffer).
 # Scheduled run: every 3.5 hours between 10:00 and 22:00 IST. It only runs when the repository variable
 # SHORTS_SCHEDULE_ENABLED is "true", so it stays off until the n8n schedule has been switched off.
+#
+# Google Flow images (package runs only): the "flow" job generates the scene images with Google Flow (ZAPI FLOW extension,
+# same setup as flow-batch.yml, 1 hour cap) and uploads them as the "flow-images" artifact. The "make" job always runs afterwards:
+# it matches the Flow images to the scenes, and the normal providers (HINDI_IMAGE_ORDER) make any missing image.
+# Switch Flow off with the repository variable FLOW_ENABLED = "false". Optional variable FLOW_MODEL (default Nano Banana Lite).
+# Needs the same FLOW_COOKIES_B64 secret and FLOW_PROJECT_URL variable as flow-batch.yml; without them Flow is skipped.
 
 on:
   schedule:
@@ -57,8 +63,125 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  flow:
+    if: github.event_name != 'schedule' && vars.FLOW_ENABLED != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare Flow prompts
+        id: prep
+        env:
+          PACKAGE_INPUT: ${{ inputs.package }}
+          FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
+          FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
+          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
+          GEMINI_API_KEY_6: ${{ secrets.GEMINI_API_KEY_6 }}
+        run: |
+          if [ -z "$FLOW_COOKIES_B64" ] || [ -z "$FLOW_URL" ]; then
+            echo "::warning::FLOW_COOKIES_B64 secret or FLOW_PROJECT_URL variable is missing, Flow is skipped"
+            exit 0
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ -f jobs/package.json ]; then
+            cp jobs/package.json /tmp/package.json
+          else
+            printf '%s' "$PACKAGE_INPUT" > /tmp/package.json
+          fi
+          pip install requests
+          python pipeline/flow_images.py prepare --package /tmp/package.json \
+            --prompts flow-batch/prompts/shorts_flow.json --meta flow-batch/prompts/shorts_flow_meta.json \
+            || echo "::warning::Flow prompt preparation failed, Flow is skipped"
+
+      - uses: actions/setup-node@v4
+        if: steps.prep.outputs.flow == 'true'
+        with:
+          node-version: 20
+
+      - name: Download ZAPI Flow extension
+        if: steps.prep.outputs.flow == 'true'
+        run: |
+          EXT_ID=debadkiomlbdambamdpdlgdkgnedcjil
+          DEST=flow-batch/extension/zapi-flow
+          if [ ! -f "$DEST/manifest.json" ]; then
+            mkdir -p "$DEST"
+            curl -fsSL -o /tmp/zapi.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=126.0&acceptformat=crx2,crx3&x=id%3D${EXT_ID}%26uc"
+            unzip -o -q /tmp/zapi.crx -d "$DEST" || test -f "$DEST/manifest.json"
+          fi
+          rm -rf "$DEST/_metadata"
+          grep -m1 '"version"' "$DEST/manifest.json"
+
+      - name: Install Flow dependencies
+        if: steps.prep.outputs.flow == 'true'
+        working-directory: flow-batch
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y xvfb
+
+      - name: Restore saved Flow session
+        if: steps.prep.outputs.flow == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: flow-batch/session
+          key: flow-session-${{ github.run_id }}
+          restore-keys: |
+            flow-session-
+
+      - name: Run Flow batch
+        if: steps.prep.outputs.flow == 'true'
+        continue-on-error: true
+        timeout-minutes: 50
+        working-directory: flow-batch
+        env:
+          FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
+          FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
+          PROMPTS_FILE: prompts/shorts_flow.json
+          FLOW_ASPECT: portrait
+          FLOW_COUNT: "1"
+          FLOW_MODEL: ${{ vars.FLOW_MODEL || 'Nano Banana Lite' }}
+        run: xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
+
+      - name: Save refreshed Flow session
+        if: always() && steps.prep.outputs.flow == 'true' && hashFiles('flow-batch/session/cookies.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: flow-batch/session
+          key: flow-session-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload Flow images
+        if: always() && steps.prep.outputs.flow == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flow-images
+          path: |
+            flow-batch/downloads/final
+            flow-batch/prompts/shorts_flow_meta.json
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Upload Flow debug files
+        if: always() && steps.prep.outputs.flow == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flow-debug
+          path: |
+            flow-batch/downloads/rejected
+            flow-batch/debug
+          if-no-files-found: ignore
+          retention-days: 3
+
   make:
-    if: github.event_name != 'schedule' || vars.SHORTS_SCHEDULE_ENABLED == 'true'
+    needs: flow
+    if: ${{ !cancelled() && (github.event_name != 'schedule' || vars.SHORTS_SCHEDULE_ENABLED == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -86,6 +209,14 @@ jobs:
             ~/.cache/huggingface
             ~/.cache/torch
           key: whisperx-large-v3-turbo-hi-v1
+
+      - name: Get Flow images
+        if: needs.flow.result == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: flow-images
+          path: flow_in
 
       - name: Make the video and publish it
         id: make
@@ -132,6 +263,10 @@ jobs:
         run: |
           if [ "$GITHUB_EVENT_NAME" = "push" ] && [ -f jobs/package.json ]; then
             export PACKAGE="$(cat jobs/package.json)"
+          fi
+          if [ -d flow_in ]; then
+            export FLOW_DIR="$PWD/flow_in"
+            export RENDER_SCRIPT="$PWD/render_hindi_flow.py"
           fi
           python pipeline/run_shorts.py
 
