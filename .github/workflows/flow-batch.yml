@@ -23,9 +23,9 @@ jobs:
         run: |
           miss=""
           [ -z "$FLOW_COOKIES_B64" ] && miss="$miss FLOW_COOKIES_B64(secret)"
-          [ -z "$RCLONE_CONF" ] && miss="$miss RCLONE_CONF(secret)"
           [ -z "$FLOW_URL" ] && miss="$miss FLOW_PROJECT_URL(variable)"
           if [ -n "$miss" ]; then echo "::error::Missing repository settings:$miss"; exit 1; fi
+          [ -z "$RCLONE_CONF" ] && echo "::warning::RCLONE_CONF not set - images will NOT be uploaded to Google Drive (artifact only)"
           case "$FLOW_URL" in *"/project/"*) ;; *) echo "::warning::FLOW_PROJECT_URL does not look like a Flow project URL (expected .../project/<id>)";; esac
           echo "Configuration present"
       - uses: actions/checkout@v4
@@ -64,6 +64,7 @@ jobs:
           RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
           DRIVE_FOLDER: ${{ vars.DRIVE_FOLDER }}
         run: |
+          if [ -z "$RCLONE_CONF" ]; then echo "RCLONE_CONF not set - skipping Drive upload"; exit 0; fi
           if [ -z "$(ls -A downloads/final 2>/dev/null)" ]; then echo "No valid images to upload"; exit 0; fi
           mkdir -p ~/.config/rclone
           printf '%s' "$RCLONE_CONF" > ~/.config/rclone/rclone.conf

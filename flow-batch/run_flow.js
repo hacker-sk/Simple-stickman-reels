@@ -18,14 +18,15 @@ fs.mkdirSync(FINAL_DIR, { recursive: true });
 fs.mkdirSync(DEBUG_DIR, { recursive: true });
 
 const NL = String.fromCharCode(10);
-const BLANK = NL + NL;
 
-// .json: array of strings or {prompt}. .txt: ONE text block, prompts separated by a blank line.
+// .json: array of strings or {prompt}. .txt: prompts separated by a blank line.
+// Each prompt is flattened to ONE line because ZAPI FLOW queues one prompt per line.
 function loadPrompts() {
   const text = fs.readFileSync(PROMPTS_FILE, "utf8").replace(/\r/g, "");
-  if (PROMPTS_FILE.endsWith(".txt")) return text.split(/\n[ \t]*\n/).map((p) => p.trim()).filter(Boolean);
-  const raw = JSON.parse(text);
-  return raw.map((p) => (typeof p === "string" ? p : p.prompt)).filter(Boolean).map((p) => p.trim());
+  let list;
+  if (PROMPTS_FILE.endsWith(".txt")) list = text.split(/\n[ \t]*\n/);
+  else list = JSON.parse(text).map((p) => (typeof p === "string" ? p : p.prompt));
+  return list.filter(Boolean).map((p) => p.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean);
 }
 
 // Accepts: Playwright storageState ({cookies:[...]}) or array, Cookie-Editor / EditThisCookie export (array).
@@ -73,52 +74,48 @@ function imgType(buf) {
   return null;
 }
 
-// Collect only complete, valid images from every place Chrome may have written them.
+function listFiles(dir, out) {
+  if (!fs.existsSync(dir)) return out;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) { if (full !== FINAL_DIR) listFiles(full, out); }
+    else out.push(full);
+  }
+  return out;
+}
+
+// Collect only complete, valid images from every place Chrome may have written them (subfolders included).
 function collectImages() {
-  const sources = [RAW_DIR, DL_DIR, path.join(os.homedir(), "Downloads")];
+  const files = [];
+  listFiles(DL_DIR, files);
+  listFiles(path.join(os.homedir(), "Downloads"), files);
   const seen = new Set();
   const manifest = [];
   const skipped = [];
   let n = 0;
-  for (const dir of sources) {
-    if (!fs.existsSync(dir)) continue;
-    for (const f of fs.readdirSync(dir)) {
-      const full = path.join(dir, f);
-      if (!fs.statSync(full).isFile()) continue;
-      if (/\.(crdownload|tmp|part)$/i.test(f)) { skipped.push(f + " (incomplete)"); continue; }
-      const buf = fs.readFileSync(full);
-      const ext = imgType(buf);
-      if (!ext || buf.length < 10000) { skipped.push(f + " (not a valid image / too small)"); continue; }
-      const hash = crypto.createHash("sha256").update(buf).digest("hex");
-      if (seen.has(hash)) continue;
-      seen.add(hash);
-      n += 1;
-      const name = "img-" + String(n).padStart(3, "0") + ext;
-      fs.copyFileSync(full, path.join(FINAL_DIR, name));
-      manifest.push({ file: name, bytes: buf.length, source: f });
-    }
+  for (const full of files) {
+    const f = path.basename(full);
+    if (/\.(crdownload|tmp|part)$/i.test(f)) { skipped.push(f + " (incomplete)"); continue; }
+    const buf = fs.readFileSync(full);
+    const ext = imgType(buf);
+    if (!ext || buf.length < 10000) { skipped.push(f + " (not a valid image / too small)"); continue; }
+    const hash = crypto.createHash("sha256").update(buf).digest("hex");
+    if (seen.has(hash)) continue;
+    seen.add(hash);
+    n += 1;
+    const name = "img-" + String(n).padStart(3, "0") + ext;
+    fs.copyFileSync(full, path.join(FINAL_DIR, name));
+    manifest.push({ file: name, bytes: buf.length, source: full.replace(os.homedir(), "~") });
   }
   fs.writeFileSync(path.join(DEBUG_DIR, "downloads-listing.json"), JSON.stringify({ valid: manifest, skipped }, null, 2));
   console.log("Valid images:", manifest.length, "| skipped:", skipped.length);
   return manifest.length;
 }
 
-// Debug aid: how does the extension parse its prompt box? Saved to debug/parse-hints.txt
-function dumpParseHints() {
-  const lines = [];
-  const walk = (d) => {
-    for (const f of fs.readdirSync(d)) {
-      const full = path.join(d, f);
-      if (fs.statSync(full).isDirectory()) walk(full);
-      else if (/\.js$/.test(f)) {
-        fs.readFileSync(full, "utf8").split(NL).forEach((l, i) => {
-          if (/split\(/.test(l) && /prompt|\\n/i.test(l) && l.length < 400) lines.push(path.relative(EXT_DIR, full) + ":" + (i + 1) + ": " + l.trim());
-        });
-      }
-    }
-  };
-  try { walk(EXT_DIR); } catch (e) {}
-  fs.writeFileSync(path.join(DEBUG_DIR, "parse-hints.txt"), lines.slice(0, 60).join(NL));
+async function dumpUiText(ui, name) {
+  const t = await ui.locator("body").innerText().catch(() => "");
+  fs.writeFileSync(path.join(DEBUG_DIR, name), t);
+  return t;
 }
 
 (async () => {
@@ -126,7 +123,6 @@ function dumpParseHints() {
   const prompts = loadPrompts();
   if (!prompts.length) throw new Error("No prompts found in " + PROMPTS_FILE);
   console.log("Prompts loaded:", prompts.length);
-  dumpParseHints();
 
   const context = await chromium.launchPersistentContext(path.join(__dirname, "profile"), {
     headless: false,
@@ -177,7 +173,8 @@ function dumpParseHints() {
   await flow.goto(FLOW_URL, { waitUntil: "domcontentloaded" });
   await flow.waitForTimeout(12000);
   await flow.screenshot({ path: path.join(DEBUG_DIR, "01-flow.png") });
-  console.log("Flow page host/path:", new URL(flow.url()).host + new URL(flow.url()).pathname);
+  const fu = new URL(flow.url());
+  console.log("Flow page host/path:", fu.host + fu.pathname);
   const signedOut = flow.url().includes("accounts.google.com") ||
     (await flow.getByRole("button", { name: /^sign in$/i }).count().catch(() => 0)) > 0 ||
     (await flow.getByRole("link", { name: /^sign in$/i }).count().catch(() => 0)) > 0;
@@ -187,17 +184,20 @@ function dumpParseHints() {
   await ui.goto("chrome-extension://" + extId + "/" + cfg.extensionPage);
   await ui.waitForTimeout(4000);
   await ui.screenshot({ path: path.join(DEBUG_DIR, "02-ui.png") });
+  await dumpUiText(ui, "02-ui-text.txt");
 
-  const block = prompts.join(BLANK);
+  // ZAPI FLOW: one prompt per line
+  const block = prompts.join(NL);
   await ui.locator(cfg.selectors.promptInput).fill(block);
   const echoed = await ui.locator(cfg.selectors.promptInput).inputValue();
-  console.log("Prompt box blocks (blank-line separated):", echoed.split(/\n[ \t]*\n/).filter((s) => s.trim()).length, "of", prompts.length);
+  console.log("Prompt box lines:", echoed.split(NL).filter((s) => s.trim()).length, "of", prompts.length);
   try {
     await ui.waitForFunction((sel) => { const b = document.querySelector(sel); return b && !b.disabled; }, cfg.selectors.startButton, { timeout: 90000 });
   } catch (e) {
     await ui.screenshot({ path: path.join(DEBUG_DIR, "03-disabled.png") });
+    await dumpUiText(ui, "03-disabled-text.txt");
     await flow.screenshot({ path: path.join(DEBUG_DIR, "03-flow-state.png") });
-    throw new Error("Start button stayed disabled - the Flow tab must be inside an open Flow project (set repo variable FLOW_PROJECT_URL)");
+    throw new Error("Start button stayed disabled - the Flow tab must be inside an open Flow project (check repo variable FLOW_PROJECT_URL) and Agent mode must be off");
   }
   await ui.screenshot({ path: path.join(DEBUG_DIR, "03-filled.png") });
   await ui.locator(cfg.selectors.startButton).click();
@@ -207,6 +207,7 @@ function dumpParseHints() {
   const early = await ui.locator(cfg.selectors.status).innerText().catch(() => "");
   console.log("Status 8s after start:", early.slice(0, 200));
   await ui.screenshot({ path: path.join(DEBUG_DIR, "03b-started.png") });
+  await dumpUiText(ui, "03b-started-text.txt");
   await flow.screenshot({ path: path.join(DEBUG_DIR, "03c-flow-started.png") });
 
   const deadline = Date.now() + cfg.timeoutMinutes * 60000;
@@ -214,16 +215,20 @@ function dumpParseHints() {
   const failRe = /error|failed|sign in|not logged|quota|limit/i;
   let done = false;
   let last = "";
+  let tick = 0;
   while (Date.now() < deadline) {
     const txt = await ui.locator(cfg.selectors.status).innerText().catch(() => "");
     if (txt !== last) { console.log("Status:", txt.slice(0, 300)); last = txt; }
     if (doneRe.test(txt)) { done = true; break; }
-    if (failRe.test(txt) && !doneRe.test(txt)) { console.log("Extension reported a problem - stopping wait"); break; }
+    if (failRe.test(txt)) { console.log("Extension reported a problem - stopping wait"); break; }
+    tick += 1;
+    if (tick % 8 === 0) await flow.screenshot({ path: path.join(DEBUG_DIR, "progress-" + tick + ".png") });
     await flow.waitForTimeout(15000);
   }
   console.log("Extension finished:", done);
   await flow.screenshot({ path: path.join(DEBUG_DIR, "04-end.png") });
   await ui.screenshot({ path: path.join(DEBUG_DIR, "04-ui-end.png") });
+  await dumpUiText(ui, "04-ui-end-text.txt");
   await flow.waitForTimeout(cfg.settleSeconds * 1000);
   await context.close();
 
