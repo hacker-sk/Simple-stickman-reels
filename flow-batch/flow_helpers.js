@@ -31,6 +31,11 @@ async function composerChip(pg) {
   return null;
 }
 
+// Model names are matched loosely so "Nano Banana Lite" also matches a label such as "Nano Banana 2 Lite".
+function modelRegex(model) {
+  return new RegExp(String(model).trim().split(/\s+/).map(esc).join(".{0,12}?"), "i");
+}
+
 // Best-effort: Agent off, model, aspect, count. Never throws. Reports what it could and could not verify.
 async function applyFlowSettings(pg, want, debugDir) {
   const res = { want, steps: [], verified: false };
@@ -59,7 +64,7 @@ async function applyFlowSettings(pg, want, debugDir) {
     const scope = () => pg.locator(LAYER_SEL).last();
     const sc = async () => ((await pg.locator(LAYER_SEL).count().catch(() => 0)) > 0 ? scope() : pg);
 
-    const modelRe = new RegExp(esc(want.model), "i");
+    const modelRe = modelRegex(want.model);
     if (!modelRe.test(res.chipBefore)) {
       let r = await tryClick(await sc(), modelRe);
       if (!r) { await tryClick(await sc(), /model/i); await pg.waitForTimeout(700); r = await tryClick(await sc(), modelRe); }
