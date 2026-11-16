@@ -63,6 +63,11 @@ async function chipText(pg) {
   return c ? (await c.innerText().catch(() => "")).replace(/\s+/g, " ").trim() : "";
 }
 
+// A chip is only trustworthy when it shows BOTH the ratio icon and the image count.
+function chipReadable(t) {
+  return /crop_/.test(t || "") && /\bx\s*\d\b/i.test(t || "");
+}
+
 // Model names are matched loosely so "Nano Banana Lite" also matches a label such as "Nano Banana 2 Lite".
 function modelRegex(model) {
   return new RegExp(String(model).trim().split(/\s+/).map(esc).join(".{0,12}?"), "i");
@@ -72,8 +77,20 @@ async function popoverOpen(pg) {
   return (await pg.getByText(/^(16:9|4:3|1:1|3:4|9:16)$/).count().catch(() => 0)) > 0;
 }
 
+// Closes the settings popover (Escape closes an open dropdown first, then the popover). The composer chip must only be
+// read while this has returned, otherwise the popover's own model dropdown can be read instead of the chip.
+async function closePopover(pg) {
+  for (let i = 0; i < 3; i++) {
+    if (!(await popoverOpen(pg))) return true;
+    await pg.keyboard.press("Escape").catch(() => {});
+    await pg.waitForTimeout(500);
+  }
+  return !(await popoverOpen(pg));
+}
+
 // Sets Agent off, model, aspect ratio and image count, then CHECKS the composer chip. Never throws.
 // want = { agent, model, aspect, count }. Result.verdict: "ok" | "wrong" (chip shows other values) | "unknown" (chip unreadable).
+// Settings are only "verified" when a readable chip shows the wanted model, ratio and count; anything unreadable is "unknown".
 async function applyFlowSettings(pg, want, debugDir) {
   const asp = resolveAspect(want.aspect);
   const res = { want, ratio: asp && asp.label, steps: [], verified: false, verdict: "unknown" };
@@ -83,7 +100,9 @@ async function applyFlowSettings(pg, want, debugDir) {
     const modelRe = modelRegex(want.model);
     const ratioRe = new RegExp("(^|\\s)" + esc(asp.label) + "\\s*$");
     const countRe = new RegExp("^\\s*x\\s*" + Number(want.count) + "\\s*$", "i");
+    const check = (t) => ({ model: modelRe.test(t || ""), icon: (t || "").indexOf(asp.icon) !== -1, count: new RegExp("\\bx\\s*" + Number(want.count) + "\\b", "i").test(t || "") });
 
+    await closePopover(pg);
     res.chipBefore = await chipText(pg);
     if (!res.chipBefore) { note("composer settings chip not found (is the Flow project open?)"); return res; }
     note("chip before: " + res.chipBefore);
@@ -100,18 +119,23 @@ async function applyFlowSettings(pg, want, debugDir) {
     }
 
     let chip = res.chipBefore;
-    const check = (t) => ({ model: modelRe.test(t), icon: t.indexOf(asp.icon) !== -1, count: new RegExp("\\bx\\s*" + Number(want.count) + "\\b", "i").test(t) });
     for (let attempt = 1; attempt <= 3; attempt++) {
+      if (attempt > 1) {
+        // Re-read the chip only with the popover closed, so correct settings are never clicked again by mistake.
+        await closePopover(pg);
+        chip = await chipText(pg);
+        note("chip re-read: " + (chip || "(unreadable)"));
+      }
+      if (!chipReadable(chip)) { note("chip not readable - not clicking blindly, settings stay unverified"); break; }
       const ok = check(chip);
-      if (ok.model && ok.icon && ok.count) break;
+      if (ok.model && ok.icon && ok.count) { note("settings already correct"); break; }
       note("attempt " + attempt + " needs: " + [!ok.model && "model", !ok.icon && "ratio", !ok.count && "count"].filter(Boolean).join("+"));
 
-      if (!(await popoverOpen(pg))) {
-        const c = await composerChip(pg);
-        if (!c) { note("chip vanished"); break; }
-        await c.click({ timeout: 3000 }).catch(() => {});
-        await pg.waitForTimeout(900);
-      }
+      const c = await composerChip(pg);
+      if (!c) { note("chip vanished"); break; }
+      await c.click({ timeout: 3000 }).catch(() => {});
+      await pg.waitForTimeout(900);
+
       if (attempt === 1) {
         fs.writeFileSync(path.join(debugDir, "02b-settings-popover-text.txt"), await layerText(pg));
         await pg.screenshot({ path: path.join(debugDir, "02b-settings-open.png") }).catch(() => {});
@@ -136,21 +160,15 @@ async function applyFlowSettings(pg, want, debugDir) {
       }
       if (!ok.icon) { note("ratio " + asp.label + " click: " + (await tryClick(pg, ratioRe))); await pg.waitForTimeout(500); }
       if (!ok.count) { note("count x" + want.count + " click: " + (await tryClick(pg, countRe))); await pg.waitForTimeout(500); }
-
-      chip = (await chipText(pg)) || chip;
-      note("chip now: " + chip);
     }
 
-    // close the popover (Escape twice: first closes an open dropdown, second the popover)
-    await pg.keyboard.press("Escape").catch(() => {});
-    await pg.waitForTimeout(400);
-    await pg.keyboard.press("Escape").catch(() => {});
-    await pg.waitForTimeout(500);
-    res.chipAfter = (await chipText(pg)) || chip;
-    note("chip after: " + res.chipAfter);
+    await closePopover(pg);
+    res.chipAfter = await chipText(pg);
+    note("chip after: " + (res.chipAfter || "(unreadable)"));
     const fin = check(res.chipAfter);
-    res.verified = fin.model && fin.icon && fin.count;
-    res.verdict = res.verified ? "ok" : (/crop_|\bx\s*\d\b/i.test(res.chipAfter) ? "wrong" : "unknown");
+    const readable = chipReadable(res.chipAfter);
+    res.verified = readable && fin.model && fin.icon && fin.count;
+    res.verdict = res.verified ? "ok" : (readable ? "wrong" : "unknown");
     await pg.screenshot({ path: path.join(debugDir, "02b-settings-after.png") }).catch(() => {});
   } catch (e) {
     note("settings error: " + String(e && e.message).slice(0, 200));
