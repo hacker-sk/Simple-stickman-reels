@@ -50,6 +50,13 @@ jobs:
           npm install
           npx playwright install --with-deps chromium
           sudo apt-get install -y xvfb rclone
+      - name: Restore saved Flow session
+        uses: actions/cache/restore@v4
+        with:
+          path: flow-batch/session
+          key: flow-session-${{ github.run_id }}
+          restore-keys: |
+            flow-session-
       - name: Run Flow batch
         working-directory: flow-batch
         env:
@@ -57,6 +64,12 @@ jobs:
           FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
           PROMPTS_FILE: ${{ inputs.prompts_file }}
         run: xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
+      - name: Save refreshed Flow session
+        if: always() && hashFiles('flow-batch/session/cookies.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: flow-batch/session
+          key: flow-session-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Upload valid images to Google Drive
         if: always()
         working-directory: flow-batch
