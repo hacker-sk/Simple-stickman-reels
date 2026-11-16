@@ -14,7 +14,9 @@ fs.mkdirSync(RAW_DIR, { recursive: true });
 fs.mkdirSync(DEBUG_DIR, { recursive: true });
 
 function loadPrompts() {
-  const raw = JSON.parse(fs.readFileSync(PROMPTS_FILE, "utf8"));
+  const text = fs.readFileSync(PROMPTS_FILE, "utf8");
+  if (PROMPTS_FILE.endsWith(".txt")) return text.split(String.fromCharCode(10)).map((l) => l.trim()).filter(Boolean);
+  const raw = JSON.parse(text);
   return raw.map((p) => (typeof p === "string" ? p : p.prompt)).filter(Boolean);
 }
 
