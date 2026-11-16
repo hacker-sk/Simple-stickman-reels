@@ -1,0 +1,47 @@
+name: Flow Batch Images
+on:
+  workflow_dispatch:
+    inputs:
+      prompts_file:
+        description: Prompt batch file inside flow-batch
+        default: prompts/batch.json
+  schedule:
+    - cron: "30 2 * * *"
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: flow-batch
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y xvfb rclone
+      - name: Run Flow batch
+        working-directory: flow-batch
+        env:
+          FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
+          PROMPTS_FILE: ${{ inputs.prompts_file }}
+        run: xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
+      - name: Upload to Google Drive
+        if: always()
+        working-directory: flow-batch
+        env:
+          RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
+          DRIVE_FOLDER: ${{ vars.DRIVE_FOLDER }}
+        run: |
+          mkdir -p ~/.config/rclone
+          echo "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
+          rclone copy downloads "gdrive:${DRIVE_FOLDER:-FlowBatch}/$(date +%F-%H%M)" --verbose
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flow-batch-output
+          path: |
+            flow-batch/downloads
+            flow-batch/debug
