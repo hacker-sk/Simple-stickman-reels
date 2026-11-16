@@ -5,6 +5,10 @@ on:
       prompts_file:
         description: Prompt batch file inside flow-batch (.json array, or .txt with blank-line-separated prompts)
         default: prompts/batch.json
+  push:
+    branches: [main]
+    paths:
+      - "flow-batch/trigger-test.txt"
   schedule:
     - cron: "30 2 * * *"
 concurrency:
@@ -62,7 +66,7 @@ jobs:
         env:
           FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
           FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
-          PROMPTS_FILE: ${{ inputs.prompts_file }}
+          PROMPTS_FILE: ${{ github.event_name == 'push' && 'prompts/test1.txt' || inputs.prompts_file }}
         run: xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
       - name: Save refreshed Flow session
         if: always() && hashFiles('flow-batch/session/cookies.json') != ''
