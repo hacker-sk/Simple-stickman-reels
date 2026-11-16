@@ -59,6 +59,21 @@ function fixExtensions(dir) {
   });
   context.pages().forEach(hook);
   context.on("page", hook);
+
+  // The ZAPI Flow side panel looks for the active tab in the current window.
+  // Opened as a normal tab it would find itself, so point it at the Flow tab instead.
+  await context.addInitScript(() => {
+    if (!(window.chrome && chrome.tabs && chrome.tabs.query)) return;
+    const orig = chrome.tabs.query.bind(chrome.tabs);
+    chrome.tabs.query = function (q, cb) {
+      const wantActive = q && q.active && q.currentWindow;
+      const query = wantActive ? { url: ["https://labs.google/fx/*", "https://flow.google.com/*"] } : q;
+      const p = orig(query).then((r) => (wantActive ? r.slice(0, 1) : r));
+      if (typeof cb === "function") { p.then(cb); return; }
+      return p;
+    };
+  });
+
   await context.addCookies(loadCookies());
 
   let extId = process.env.EXT_ID || "";
@@ -68,42 +83,49 @@ function fixExtensions(dir) {
       if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 20000 });
       extId = sw.url().split("/")[2];
     } catch (e) {
-      console.log("Could not detect extension id (set EXT_ID if the UI is a popup page)");
+      console.log("Service worker not found");
     }
   }
-  console.log("Extension id:", extId || "unknown");
+  if (!extId) throw new Error("Could not detect the ZAPI Flow extension id - did the extension load?");
+  console.log("Extension id:", extId);
 
   const flow = await context.newPage();
   await flow.goto(FLOW_URL, { waitUntil: "domcontentloaded" });
-  await flow.waitForTimeout(10000);
+  await flow.waitForTimeout(12000);
   await flow.screenshot({ path: path.join(DEBUG_DIR, "01-flow.png") });
   if (flow.url().includes("accounts.google.com")) throw new Error("Google session expired - regenerate FLOW_COOKIES_B64");
 
-  let ui = flow;
-  const visible = await flow.locator(cfg.selectors.promptInput).first().isVisible().catch(() => false);
-  if (!visible && extId) {
-    ui = await context.newPage();
-    await ui.goto("chrome-extension://" + extId + "/" + cfg.extensionPage);
-    await ui.waitForTimeout(3000);
-  }
+  const ui = await context.newPage();
+  await ui.goto("chrome-extension://" + extId + "/" + cfg.extensionPage);
+  await ui.waitForTimeout(4000);
   await ui.screenshot({ path: path.join(DEBUG_DIR, "02-ui.png") });
 
-  await ui.locator(cfg.selectors.promptInput).first().fill(prompts.join(String.fromCharCode(10)));
+  await ui.locator(cfg.selectors.promptInput).fill(prompts.join(String.fromCharCode(10)));
+  try {
+    await ui.waitForFunction((sel) => { const b = document.querySelector(sel); return b && !b.disabled; }, cfg.selectors.startButton, { timeout: 90000 });
+  } catch (e) {
+    await ui.screenshot({ path: path.join(DEBUG_DIR, "03-disabled.png") });
+    await flow.screenshot({ path: path.join(DEBUG_DIR, "03-flow-state.png") });
+    throw new Error("Start button stayed disabled - the Flow tab must be inside an open Flow project (set repo variable FLOW_PROJECT_URL)");
+  }
   await ui.screenshot({ path: path.join(DEBUG_DIR, "03-filled.png") });
-  await ui.locator(cfg.selectors.startButton).first().click();
+  await ui.locator(cfg.selectors.startButton).click();
+  await flow.bringToFront();
   console.log("Job started");
 
   const deadline = Date.now() + cfg.timeoutMinutes * 60000;
   const doneRe = new RegExp(cfg.doneText, "i");
   let done = false;
+  let last = "";
   while (Date.now() < deadline) {
-    const txt = await ui.locator("body").innerText().catch(() => "");
+    const txt = await ui.locator(cfg.selectors.status).innerText().catch(() => "");
+    if (txt !== last) { console.log("Status:", txt); last = txt; }
     if (doneRe.test(txt)) { done = true; break; }
-    await ui.waitForTimeout(15000);
+    await flow.waitForTimeout(15000);
   }
   console.log("Job finished:", done);
-  await ui.screenshot({ path: path.join(DEBUG_DIR, "04-end.png") });
-  await ui.waitForTimeout(cfg.settleSeconds * 1000);
+  await flow.screenshot({ path: path.join(DEBUG_DIR, "04-end.png") });
+  await flow.waitForTimeout(cfg.settleSeconds * 1000);
   await context.close();
 
   fixExtensions(RAW_DIR);
