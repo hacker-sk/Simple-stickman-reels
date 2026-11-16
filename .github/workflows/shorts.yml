@@ -148,7 +148,11 @@ jobs:
           FLOW_ASPECT: portrait
           FLOW_COUNT: "1"
           FLOW_MODEL: ${{ vars.FLOW_MODEL || 'Nano Banana Lite' }}
-        run: xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
+        run: |
+          # The script collects the finished images only after its own wait ends (config.json says 90 minutes).
+          # Shorten that wait for this job so the images are collected and uploaded before the 50 minute step cap.
+          sed -i 's/"timeoutMinutes": *[0-9]*/"timeoutMinutes": 38/' config.json
+          xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
 
       - name: Save refreshed Flow session
         if: always() && steps.prep.outputs.flow == 'true' && hashFiles('flow-batch/session/cookies.json') != ''
@@ -211,7 +215,8 @@ jobs:
           key: whisperx-large-v3-turbo-hi-v1
 
       - name: Get Flow images
-        if: needs.flow.result == 'success'
+        # Also after a failed Flow job: the images it did finish are still uploaded. A missing artifact is not an error.
+        if: needs.flow.result != 'skipped'
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
