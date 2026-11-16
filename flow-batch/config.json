@@ -4,6 +4,12 @@
   "timeoutMinutes": 90,
   "settleSeconds": 45,
   "doneText": "generated|Done:",
+  "flowSettings": {
+    "agent": "off",
+    "model": "Nano Banana 2 Lite",
+    "aspect": "portrait",
+    "count": 1
+  },
   "selectors": {
     "promptInput": "#prompts",
     "startButton": "#run",
