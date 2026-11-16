@@ -16,6 +16,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Download ZAPI Flow extension
+        run: |
+          EXT_ID=debadkiomlbdambamdpdlgdkgnedcjil
+          DEST=flow-batch/extension/zapi-flow
+          if [ ! -f "$DEST/manifest.json" ]; then
+            mkdir -p "$DEST"
+            curl -fsSL -o /tmp/zapi.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=126.0&acceptformat=crx2,crx3&x=id%3D${EXT_ID}%26uc"
+            unzip -o -q /tmp/zapi.crx -d "$DEST" || test -f "$DEST/manifest.json"
+          fi
+          rm -rf "$DEST/_metadata"
+          grep -m1 version "$DEST/manifest.json"
       - name: Install dependencies
         working-directory: flow-batch
         run: |
@@ -26,6 +37,7 @@ jobs:
         working-directory: flow-batch
         env:
           FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
+          FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
           PROMPTS_FILE: ${{ inputs.prompts_file }}
         run: xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
       - name: Upload to Google Drive
