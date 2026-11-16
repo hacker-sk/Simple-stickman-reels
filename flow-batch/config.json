@@ -3,9 +3,11 @@
   "extensionPage": "sidepanel/sidepanel.html",
   "timeoutMinutes": 90,
   "settleSeconds": 45,
-  "doneText": "generated|Done:",
   "retryFailedPasses": 1,
   "abortOnSettingsMismatch": true,
+  "abortOnUnverifiedSettings": false,
+  "failOnPartial": false,
+  "allowedModels": ["Nano Banana 2 Lite", "Nano Banana 2", "Nano Banana Pro", "Nano Banana", "Imagen 4"],
   "flowSettings": {
     "agent": "off",
     "model": "Nano Banana Lite",
@@ -13,6 +15,8 @@
     "count": 1
   },
   "_aspect_options": "portrait (9:16) | landscape (16:9) | square (1:1) | 3:4 | 4:3. Overridable per run from the workflow inputs.",
+  "_allowedModels_note": "Model names are checked loosely against this list before Chrome starts. Add new Flow model names here.",
+  "_status_note": "PARTIAL_SUCCESS exits 0 with a warning. Set failOnPartial to true to make it fail the job. FAILED (no usable images) always fails.",
   "selectors": {
     "promptInput": "#prompts",
     "startButton": "#run",
