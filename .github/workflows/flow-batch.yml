@@ -5,6 +5,28 @@ on:
       prompts_file:
         description: Prompt batch file inside flow-batch (.json array, or .txt with blank-line-separated prompts)
         default: prompts/batch.json
+      aspect:
+        description: Image shape
+        type: choice
+        default: portrait
+        options:
+          - portrait
+          - landscape
+          - square
+          - "3:4"
+          - "4:3"
+      count:
+        description: Images per prompt
+        type: choice
+        default: "1"
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+      model:
+        description: Flow image model (name as shown in Flow, partial is fine)
+        default: Nano Banana Lite
   push:
     branches: [main]
     paths:
@@ -67,6 +89,9 @@ jobs:
           FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
           FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
           PROMPTS_FILE: ${{ github.event_name == 'push' && 'prompts/doodle5.txt' || inputs.prompts_file }}
+          FLOW_ASPECT: ${{ inputs.aspect }}
+          FLOW_COUNT: ${{ inputs.count }}
+          FLOW_MODEL: ${{ inputs.model }}
         run: xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
       - name: Save refreshed Flow session
         if: always() && hashFiles('flow-batch/session/cookies.json') != ''
