@@ -15,6 +15,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
+      - name: Check configuration
+        env:
+          FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
+          RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
+          FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
+        run: |
+          miss=""
+          [ -z "$FLOW_COOKIES_B64" ] && miss="$miss FLOW_COOKIES_B64(secret)"
+          [ -z "$RCLONE_CONF" ] && miss="$miss RCLONE_CONF(secret)"
+          [ -z "$FLOW_URL" ] && miss="$miss FLOW_PROJECT_URL(variable)"
+          if [ -n "$miss" ]; then echo "::error::Missing repository settings:$miss"; exit 1; fi
+          case "$FLOW_URL" in *"/project/"*) ;; *) echo "::warning::FLOW_PROJECT_URL does not look like a Flow project URL (expected .../project/<id>)";; esac
+          echo "Configuration present"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
