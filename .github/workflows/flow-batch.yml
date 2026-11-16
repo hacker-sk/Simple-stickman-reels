@@ -3,10 +3,13 @@ on:
   workflow_dispatch:
     inputs:
       prompts_file:
-        description: Prompt batch file inside flow-batch
+        description: Prompt batch file inside flow-batch (.json array, or .txt with blank-line-separated prompts)
         default: prompts/batch.json
   schedule:
     - cron: "30 2 * * *"
+concurrency:
+  group: flow-batch
+  cancel-in-progress: false
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -26,7 +29,8 @@ jobs:
             unzip -o -q /tmp/zapi.crx -d "$DEST" || test -f "$DEST/manifest.json"
           fi
           rm -rf "$DEST/_metadata"
-          grep -m1 version "$DEST/manifest.json"
+          grep -m1 '"version"' "$DEST/manifest.json"
+          ls "$DEST" | head -30
       - name: Install dependencies
         working-directory: flow-batch
         run: |
@@ -40,16 +44,19 @@ jobs:
           FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
           PROMPTS_FILE: ${{ inputs.prompts_file }}
         run: xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
-      - name: Upload to Google Drive
+      - name: Upload valid images to Google Drive
         if: always()
         working-directory: flow-batch
         env:
           RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
           DRIVE_FOLDER: ${{ vars.DRIVE_FOLDER }}
         run: |
+          if [ -z "$(ls -A downloads/final 2>/dev/null)" ]; then echo "No valid images to upload"; exit 0; fi
           mkdir -p ~/.config/rclone
-          echo "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
-          rclone copy downloads "gdrive:${DRIVE_FOLDER:-FlowBatch}/$(date +%F-%H%M)" --verbose
+          printf '%s' "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
+          DEST="gdrive:${DRIVE_FOLDER:-FlowBatch}/$(date +%F-%H%M)"
+          rclone copy downloads/final "$DEST" --verbose
+          rclone ls "$DEST" | tee debug/drive-listing.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

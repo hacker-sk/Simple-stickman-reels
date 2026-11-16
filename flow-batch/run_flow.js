@@ -1,6 +1,8 @@
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const zlib = require("zlib");
+const crypto = require("crypto");
 const { chromium } = require("playwright");
 
 const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8"));
@@ -8,43 +10,123 @@ const FLOW_URL = process.env.FLOW_URL || cfg.flowUrl;
 const EXT_DIR = path.resolve(__dirname, "extension", "zapi-flow");
 const DL_DIR = path.resolve(__dirname, "downloads");
 const RAW_DIR = path.join(DL_DIR, "raw");
+const FINAL_DIR = path.join(DL_DIR, "final");
 const DEBUG_DIR = path.resolve(__dirname, "debug");
 const PROMPTS_FILE = path.resolve(__dirname, process.env.PROMPTS_FILE || "prompts/batch.json");
 fs.mkdirSync(RAW_DIR, { recursive: true });
+fs.mkdirSync(FINAL_DIR, { recursive: true });
 fs.mkdirSync(DEBUG_DIR, { recursive: true });
 
+const NL = String.fromCharCode(10);
+const BLANK = NL + NL;
+
+// .json: array of strings or {prompt}. .txt: ONE text block, prompts separated by a blank line.
 function loadPrompts() {
-  const text = fs.readFileSync(PROMPTS_FILE, "utf8");
-  if (PROMPTS_FILE.endsWith(".txt")) return text.split(String.fromCharCode(10)).map((l) => l.trim()).filter(Boolean);
+  const text = fs.readFileSync(PROMPTS_FILE, "utf8").replace(/\r/g, "");
+  if (PROMPTS_FILE.endsWith(".txt")) return text.split(/\n[ \t]*\n/).map((p) => p.trim()).filter(Boolean);
   const raw = JSON.parse(text);
-  return raw.map((p) => (typeof p === "string" ? p : p.prompt)).filter(Boolean);
+  return raw.map((p) => (typeof p === "string" ? p : p.prompt)).filter(Boolean).map((p) => p.trim());
 }
 
+// Accepts: Playwright storageState ({cookies:[...]}) or array, Cookie-Editor / EditThisCookie export (array).
+// Base64 of plain JSON or of gzipped JSON. Never logs cookie values.
 function loadCookies() {
-  const b64 = process.env.FLOW_COOKIES_B64;
+  const b64 = (process.env.FLOW_COOKIES_B64 || "").trim();
   if (!b64) throw new Error("FLOW_COOKIES_B64 secret is missing");
-  const state = JSON.parse(zlib.gunzipSync(Buffer.from(b64, "base64")).toString("utf8"));
-  return state.cookies || state;
+  let buf = Buffer.from(b64, "base64");
+  if (buf[0] === 0x1f && buf[1] === 0x8b) buf = zlib.gunzipSync(buf);
+  let data;
+  try { data = JSON.parse(buf.toString("utf8")); }
+  catch (e) { throw new Error("FLOW_COOKIES_B64 is not valid base64 JSON (plain or gzipped)"); }
+  const list = Array.isArray(data) ? data : data.cookies;
+  if (!Array.isArray(list) || !list.length) throw new Error("FLOW_COOKIES_B64 contains no cookies");
+  const ss = { no_restriction: "None", none: "None", lax: "Lax", strict: "Strict" };
+  const out = [];
+  for (const c of list) {
+    if (!c || !c.name || !c.domain) continue;
+    const host = String(c.domain).replace(/^\./, "");
+    const secure = !!c.secure;
+    let sameSite = ss[String(c.sameSite || "").toLowerCase()];
+    if (sameSite === "None" && !secure) sameSite = "Lax";
+    const exp = c.expires !== undefined ? c.expires : c.expirationDate;
+    const cookie = { name: c.name, value: c.value === undefined ? "" : String(c.value), httpOnly: !!c.httpOnly, secure };
+    if (sameSite) cookie.sameSite = sameSite;
+    cookie.expires = (typeof exp === "number" && exp > 0 && !c.session) ? Math.floor(exp) : -1;
+    if (c.hostOnly === true || /^__Host-/.test(c.name)) {
+      cookie.url = "https://" + host + "/";
+    } else {
+      cookie.domain = String(c.domain);
+      cookie.path = c.path || "/";
+    }
+    out.push(cookie);
+  }
+  if (!out.length) throw new Error("No usable cookies found in FLOW_COOKIES_B64");
+  const names = new Set(out.map((c) => c.name));
+  console.log("Cookies loaded:", out.length, "| has SID:", names.has("SID") || names.has("__Secure-1PSID"));
+  return out;
 }
 
-function fixExtensions(dir) {
-  if (!fs.existsSync(dir)) return;
-  for (const f of fs.readdirSync(dir)) {
-    if (path.extname(f)) continue;
-    const full = path.join(dir, f);
-    const head = fs.readFileSync(full).subarray(0, 12);
-    let ext = ".bin";
-    if (head[0] === 0x89 && head[1] === 0x50) ext = ".png";
-    else if (head[0] === 0xff && head[1] === 0xd8) ext = ".jpg";
-    else if (head.toString("ascii", 0, 4) === "RIFF") ext = ".webp";
-    fs.renameSync(full, full + ext);
+function imgType(buf) {
+  if (buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return ".png";
+  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return ".jpg";
+  if (buf.length > 12 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP") return ".webp";
+  return null;
+}
+
+// Collect only complete, valid images from every place Chrome may have written them.
+function collectImages() {
+  const sources = [RAW_DIR, DL_DIR, path.join(os.homedir(), "Downloads")];
+  const seen = new Set();
+  const manifest = [];
+  const skipped = [];
+  let n = 0;
+  for (const dir of sources) {
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      const full = path.join(dir, f);
+      if (!fs.statSync(full).isFile()) continue;
+      if (/\.(crdownload|tmp|part)$/i.test(f)) { skipped.push(f + " (incomplete)"); continue; }
+      const buf = fs.readFileSync(full);
+      const ext = imgType(buf);
+      if (!ext || buf.length < 10000) { skipped.push(f + " (not a valid image / too small)"); continue; }
+      const hash = crypto.createHash("sha256").update(buf).digest("hex");
+      if (seen.has(hash)) continue;
+      seen.add(hash);
+      n += 1;
+      const name = "img-" + String(n).padStart(3, "0") + ext;
+      fs.copyFileSync(full, path.join(FINAL_DIR, name));
+      manifest.push({ file: name, bytes: buf.length, source: f });
+    }
   }
+  fs.writeFileSync(path.join(DEBUG_DIR, "downloads-listing.json"), JSON.stringify({ valid: manifest, skipped }, null, 2));
+  console.log("Valid images:", manifest.length, "| skipped:", skipped.length);
+  return manifest.length;
+}
+
+// Debug aid: how does the extension parse its prompt box? Saved to debug/parse-hints.txt
+function dumpParseHints() {
+  const lines = [];
+  const walk = (d) => {
+    for (const f of fs.readdirSync(d)) {
+      const full = path.join(d, f);
+      if (fs.statSync(full).isDirectory()) walk(full);
+      else if (/\.js$/.test(f)) {
+        fs.readFileSync(full, "utf8").split(NL).forEach((l, i) => {
+          if (/split\(/.test(l) && /prompt|\\n/i.test(l) && l.length < 400) lines.push(path.relative(EXT_DIR, full) + ":" + (i + 1) + ": " + l.trim());
+        });
+      }
+    }
+  };
+  try { walk(EXT_DIR); } catch (e) {}
+  fs.writeFileSync(path.join(DEBUG_DIR, "parse-hints.txt"), lines.slice(0, 60).join(NL));
 }
 
 (async () => {
   if (!fs.existsSync(path.join(EXT_DIR, "manifest.json"))) throw new Error("ZAPI Flow extension not found in " + EXT_DIR);
   const prompts = loadPrompts();
+  if (!prompts.length) throw new Error("No prompts found in " + PROMPTS_FILE);
   console.log("Prompts loaded:", prompts.length);
+  dumpParseHints();
 
   const context = await chromium.launchPersistentContext(path.join(__dirname, "profile"), {
     headless: false,
@@ -56,8 +138,8 @@ function fixExtensions(dir) {
 
   const hook = (pg) => pg.on("download", async (d) => {
     const target = path.join(DL_DIR, Date.now() + "-" + d.suggestedFilename());
-    await d.saveAs(target);
-    console.log("Saved", target);
+    await d.saveAs(target).catch((e) => console.log("download save failed:", e.message));
+    console.log("Saved", path.basename(target));
   });
   context.pages().forEach(hook);
   context.on("page", hook);
@@ -95,14 +177,21 @@ function fixExtensions(dir) {
   await flow.goto(FLOW_URL, { waitUntil: "domcontentloaded" });
   await flow.waitForTimeout(12000);
   await flow.screenshot({ path: path.join(DEBUG_DIR, "01-flow.png") });
-  if (flow.url().includes("accounts.google.com")) throw new Error("Google session expired - regenerate FLOW_COOKIES_B64");
+  console.log("Flow page host/path:", new URL(flow.url()).host + new URL(flow.url()).pathname);
+  const signedOut = flow.url().includes("accounts.google.com") ||
+    (await flow.getByRole("button", { name: /^sign in$/i }).count().catch(() => 0)) > 0 ||
+    (await flow.getByRole("link", { name: /^sign in$/i }).count().catch(() => 0)) > 0;
+  if (signedOut) throw new Error("AUTH FAILED: Google rejected or expired the restored session (new device/IP or expired cookies) - re-export cookies and update FLOW_COOKIES_B64");
 
   const ui = await context.newPage();
   await ui.goto("chrome-extension://" + extId + "/" + cfg.extensionPage);
   await ui.waitForTimeout(4000);
   await ui.screenshot({ path: path.join(DEBUG_DIR, "02-ui.png") });
 
-  await ui.locator(cfg.selectors.promptInput).fill(prompts.join(String.fromCharCode(10)));
+  const block = prompts.join(BLANK);
+  await ui.locator(cfg.selectors.promptInput).fill(block);
+  const echoed = await ui.locator(cfg.selectors.promptInput).inputValue();
+  console.log("Prompt box blocks (blank-line separated):", echoed.split(/\n[ \t]*\n/).filter((s) => s.trim()).length, "of", prompts.length);
   try {
     await ui.waitForFunction((sel) => { const b = document.querySelector(sel); return b && !b.disabled; }, cfg.selectors.startButton, { timeout: 90000 });
   } catch (e) {
@@ -113,25 +202,32 @@ function fixExtensions(dir) {
   await ui.screenshot({ path: path.join(DEBUG_DIR, "03-filled.png") });
   await ui.locator(cfg.selectors.startButton).click();
   await flow.bringToFront();
-  console.log("Job started");
+  console.log("Start clicked");
+  await flow.waitForTimeout(8000);
+  const early = await ui.locator(cfg.selectors.status).innerText().catch(() => "");
+  console.log("Status 8s after start:", early.slice(0, 200));
+  await ui.screenshot({ path: path.join(DEBUG_DIR, "03b-started.png") });
+  await flow.screenshot({ path: path.join(DEBUG_DIR, "03c-flow-started.png") });
 
   const deadline = Date.now() + cfg.timeoutMinutes * 60000;
   const doneRe = new RegExp(cfg.doneText, "i");
+  const failRe = /error|failed|sign in|not logged|quota|limit/i;
   let done = false;
   let last = "";
   while (Date.now() < deadline) {
     const txt = await ui.locator(cfg.selectors.status).innerText().catch(() => "");
-    if (txt !== last) { console.log("Status:", txt); last = txt; }
+    if (txt !== last) { console.log("Status:", txt.slice(0, 300)); last = txt; }
     if (doneRe.test(txt)) { done = true; break; }
+    if (failRe.test(txt) && !doneRe.test(txt)) { console.log("Extension reported a problem - stopping wait"); break; }
     await flow.waitForTimeout(15000);
   }
-  console.log("Job finished:", done);
+  console.log("Extension finished:", done);
   await flow.screenshot({ path: path.join(DEBUG_DIR, "04-end.png") });
+  await ui.screenshot({ path: path.join(DEBUG_DIR, "04-ui-end.png") });
   await flow.waitForTimeout(cfg.settleSeconds * 1000);
   await context.close();
 
-  fixExtensions(RAW_DIR);
-  const files = fs.readdirSync(DL_DIR).length + fs.readdirSync(RAW_DIR).length;
-  console.log("Files in downloads:", files);
-  if (!done) process.exit(1);
-})().catch((e) => { console.error(e); process.exit(1); });
+  const valid = collectImages();
+  console.log("RESULT expected=" + prompts.length + " valid_images=" + valid + " extension_done=" + done);
+  if (!done || valid < prompts.length) process.exit(1);
+})().catch((e) => { console.error(e.message || e); process.exit(1); });
