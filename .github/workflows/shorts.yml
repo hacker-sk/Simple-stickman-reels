@@ -2,6 +2,7 @@ name: Hindi Shorts
 
 # Hindi portrait Shorts, fully on GitHub Actions: topic -> script -> image prompts -> render -> Buffer.
 # Manual run (GitHub Mobile): Actions > Hindi Shorts > Run workflow, then fill in an idea OR a finished script (or leave both empty).
+# Package from Claude chat: pushing jobs/package.json starts a run that uses it as the package input (renders and posts to Buffer).
 # Scheduled run: every 3.5 hours between 10:00 and 22:00 IST. It only runs when the repository variable
 # SHORTS_SCHEDULE_ENABLED is "true", so it stays off until the n8n schedule has been switched off.
 
@@ -11,6 +12,9 @@ on:
     - cron: "0 8 * * *"     # 13:30 IST
     - cron: "30 11 * * *"   # 17:00 IST
     - cron: "0 15 * * *"    # 20:30 IST
+  push:
+    paths:
+      - "jobs/package.json"
   workflow_dispatch:
     inputs:
       idea:
@@ -125,7 +129,11 @@ jobs:
           BUFFER_INSTAGRAM_CHANNEL_ID: ${{ vars.BUFFER_INSTAGRAM_CHANNEL_ID || secrets.BUFFER_INSTAGRAM_CHANNEL_ID }}
           BUFFER_FACEBOOK_CHANNEL_ID: ${{ vars.BUFFER_FACEBOOK_CHANNEL_ID || secrets.BUFFER_FACEBOOK_CHANNEL_ID }}
           IMAGE_PROVIDER_ORDER: ${{ vars.IMAGE_PROVIDER_ORDER }}
-        run: python pipeline/run_shorts.py
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ -f jobs/package.json ]; then
+            export PACKAGE="$(cat jobs/package.json)"
+          fi
+          python pipeline/run_shorts.py
 
       - name: Keep a copy as a release
         if: always() && steps.make.outputs.video_ready == 'true'
