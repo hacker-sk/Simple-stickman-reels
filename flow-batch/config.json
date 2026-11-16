@@ -4,12 +4,15 @@
   "timeoutMinutes": 90,
   "settleSeconds": 45,
   "doneText": "generated|Done:",
+  "retryFailedPasses": 1,
+  "abortOnSettingsMismatch": true,
   "flowSettings": {
     "agent": "off",
     "model": "Nano Banana Lite",
     "aspect": "portrait",
     "count": 1
   },
+  "_aspect_options": "portrait (9:16) | landscape (16:9) | square (1:1) | 3:4 | 4:3. Overridable per run from the workflow inputs.",
   "selectors": {
     "promptInput": "#prompts",
     "startButton": "#run",
