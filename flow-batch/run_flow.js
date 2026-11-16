@@ -5,6 +5,7 @@ const zlib = require("zlib");
 const crypto = require("crypto");
 const { chromium } = require("playwright");
 const { applyFlowSettings, resolveAspect, matchesAspect } = require("./flow_helpers");
+const { parseDoneMessage, isQueueComplete, detectOverGeneration, computeBatchStatus, validateModel, uniqueName } = require("./flow_utils");
 
 const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8"));
 const FLOW_URL = process.env.FLOW_URL || cfg.flowUrl;
@@ -31,6 +32,8 @@ if ((process.env.FLOW_COUNT || "").trim()) WANT.count = parseInt(process.env.FLO
 const ASP = resolveAspect(WANT.aspect);
 if (!ASP) throw new Error("Unknown aspect '" + WANT.aspect + "'. Use portrait, landscape, square, 3:4 or 4:3 (or 9:16 / 16:9 / 1:1).");
 if (!(WANT.count >= 1 && WANT.count <= 4)) throw new Error("Image count must be 1-4, got " + WANT.count);
+const MODEL_CHECK = validateModel(WANT.model, cfg.allowedModels);
+if (!MODEL_CHECK.ok) throw new Error("Invalid model: " + MODEL_CHECK.reason);
 const RETRY_PASSES = cfg.retryFailedPasses === undefined ? 1 : cfg.retryFailedPasses;
 
 const EVID = { timeline: [], console: [], pageErrors: [], http: [], requestFailed: [], flow: {}, results: [] };
@@ -172,7 +175,7 @@ function listFiles(dir, out) {
   if (!fs.existsSync(dir)) return out;
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, e.name);
-    if (e.isDirectory()) { if (full !== FINAL_DIR && full !== REJECTED_DIR) listFiles(full, out); }
+    if (e.isDirectory()) { if (full !== FINAL_DIR && full !== REJECTED_DIR && full !== RAW_DIR) listFiles(full, out); }
     else out.push(full);
   }
   return out;
@@ -180,12 +183,15 @@ function listFiles(dir, out) {
 
 // Collect complete, valid images from every place Chrome may have written them (subfolders included).
 // Images with the requested shape go to downloads/final; wrong-shaped ones go to downloads/rejected and the rest of the batch is kept.
+// Files keep the descriptive name ZAPI FLOW's labeling gave them (capture timestamp prefix removed; -2, -3 only on a name clash).
 function collectImages() {
   const files = [];
   listFiles(DL_DIR, files);
   listFiles(path.join(os.homedir(), "Downloads"), files);
   files.sort((a, b) => fs.statSync(a).mtimeMs - fs.statSync(b).mtimeMs);
   const seen = new Set();
+  const usedFinal = new Set();
+  const usedRejected = new Set();
   const items = [];
   const skipped = [];
   let accepted = 0;
@@ -202,9 +208,9 @@ function collectImages() {
     const size = imageSize(buf);
     const ok = matchesAspect(size, ASP);
     let name;
-    if (ok) { accepted += 1; name = "img-" + String(accepted).padStart(3, "0") + ext; fs.copyFileSync(full, path.join(FINAL_DIR, name)); }
-    else { rejected += 1; fs.mkdirSync(REJECTED_DIR, { recursive: true }); name = "rej-" + String(rejected).padStart(3, "0") + ext; fs.copyFileSync(full, path.join(REJECTED_DIR, name)); }
-    items.push({ file: (ok ? "final/" : "rejected/") + name, bytes: buf.length, width: size ? size.w : null, height: size ? size.h : null, matches_requested_ratio: size ? ok : null });
+    if (ok) { accepted += 1; name = uniqueName(f, ext, usedFinal); fs.copyFileSync(full, path.join(FINAL_DIR, name)); }
+    else { rejected += 1; fs.mkdirSync(REJECTED_DIR, { recursive: true }); name = uniqueName(f, ext, usedRejected); fs.copyFileSync(full, path.join(REJECTED_DIR, name)); }
+    items.push({ file: (ok ? "final/" : "rejected/") + name, original_name: f.replace(/^\d{10,}-/, ""), bytes: buf.length, width: size ? size.w : null, height: size ? size.h : null, matches_requested_ratio: size ? ok : null });
   }
   fs.writeFileSync(path.join(DEBUG_DIR, "downloads-listing.json"), JSON.stringify({ items, skipped }, null, 2));
   console.log("Valid images:", accepted + rejected, "| accepted:", accepted, "| wrong ratio:", rejected, "| skipped:", skipped.length);
@@ -222,7 +228,7 @@ async function dumpUiText(ui, name) {
   const prompts = loadPrompts();
   if (!prompts.length) throw new Error("No prompts found in " + PROMPTS_FILE);
   console.log("Prompts loaded:", prompts.length);
-  console.log("Wanted Flow settings:", JSON.stringify(WANT), "-> ratio", ASP.label);
+  console.log("Wanted Flow settings:", JSON.stringify(WANT), "-> ratio", ASP.label, "| model check:", JSON.stringify(MODEL_CHECK));
 
   const context = await chromium.launchPersistentContext(path.join(__dirname, "profile"), {
     headless: false,
@@ -297,9 +303,17 @@ async function dumpUiText(ui, name) {
 
   EVID.flow.settings = await applyFlowSettings(flow, WANT, DEBUG_DIR);
   console.log("Flow settings verified:", EVID.flow.settings.verified, "| verdict:", EVID.flow.settings.verdict);
-  // Stop BEFORE submitting only when Flow positively shows other settings; an unreadable chip does not block the run.
+  // Stop BEFORE submitting when Flow positively shows other settings.
   if (EVID.flow.settings.verdict === "wrong" && cfg.abortOnSettingsMismatch !== false) {
     throw new Error("SETTINGS MISMATCH: Flow shows '" + EVID.flow.settings.chipAfter + "' but wanted " + WANT.model + " / " + ASP.label + " / x" + WANT.count + ". Nothing was submitted. See debug/02b-settings-*.png and debug/02b-popover.html");
+  }
+  // An unreadable chip is NOT verified. By default the run continues (the per-image ratio check still protects the output)
+  // but the batch can never end as SUCCESS. Set abortOnUnverifiedSettings to true in config.json to stop instead.
+  if (!EVID.flow.settings.verified && EVID.flow.settings.verdict === "unknown") {
+    console.log("::warning::Flow settings could NOT be verified (chip unreadable). Batch cannot be reported as SUCCESS.");
+    if (cfg.abortOnUnverifiedSettings === true) {
+      throw new Error("SETTINGS UNVERIFIED: could not read the Flow settings chip and abortOnUnverifiedSettings is true. Nothing was submitted. See debug/02b-settings-*.png");
+    }
   }
 
   const ui = await context.newPage();
@@ -321,11 +335,14 @@ async function dumpUiText(ui, name) {
   } catch (e) { console.log("Extension settings section not inspected:", String(e.message).slice(0, 100)); }
 
   const deadline = Date.now() + cfg.timeoutMinutes * 60000;
-  const doneRe = new RegExp(cfg.doneText, "i");
-  const failRe = /error|failed|sign in|not logged|quota|limit/i;
+  // Only account/quota problems end the wait early. A single failed prompt never does.
+  const fatalRe = /sign in|not logged|quota|limit/i;
+  let completionVia = "";
 
-  // Wait until the extension reports done / a problem, or the overall deadline passes.
-  async function waitForCompletion(ignoreText) {
+  // Wait until the WHOLE queue is accounted for (all `expected` prompts finished or failed), a fatal problem appears,
+  // or the overall deadline passes. Signals: the extension's "Done — N succeeded, M failed" message when N+M equals the
+  // number of prompts submitted, or every queue row being DONE/FAILED.
+  async function waitForCompletion(ignoreText, expected, list) {
     const began = Date.now();
     let done = false;
     let last = "";
@@ -335,8 +352,14 @@ async function dumpUiText(ui, name) {
       if (txt !== last) { console.log("Status:", txt.slice(0, 300)); last = txt; }
       const stale = ignoreText && txt === ignoreText && Date.now() - began < 120000;
       if (!stale) {
-        if (doneRe.test(txt)) { done = true; break; }
-        if (failRe.test(txt)) { console.log("Extension reported a problem - stopping wait"); break; }
+        const aged = Date.now() - began > 20000;
+        const body = aged ? await ui.locator("body").innerText().catch(() => "") : "";
+        const rows = body ? parseQueue(body, list) : [];
+        const doneMsg = parseDoneMessage(txt);
+        const c = isQueueComplete({ doneMsg, rows, expected });
+        if (c.complete) { done = true; completionVia = c.via; console.log("Queue complete via", c.via); break; }
+        if (doneMsg) console.log("Done message counts " + doneMsg.total + " of " + expected + " prompts - still waiting");
+        if (!doneMsg && fatalRe.test(txt)) { console.log("Extension reported an account/quota problem - stopping wait"); break; }
       }
       tick += 1;
       if (tick % 8 === 0) await flow.screenshot({ path: path.join(DEBUG_DIR, "progress-" + tick + ".png") });
@@ -376,7 +399,7 @@ async function dumpUiText(ui, name) {
   await dumpUiText(ui, "03b-started-text.txt");
   await flow.screenshot({ path: path.join(DEBUG_DIR, "03c-flow-started.png") });
 
-  let done = await waitForCompletion("");
+  let done = await waitForCompletion("", prompts.length, prompts);
   console.log("Extension finished:", done);
   await flow.screenshot({ path: path.join(DEBUG_DIR, "04-end.png") });
   await ui.screenshot({ path: path.join(DEBUG_DIR, "04-ui-end.png") });
@@ -402,7 +425,7 @@ async function dumpUiText(ui, name) {
       await ui.locator(cfg.selectors.startButton).click();
       await flow.bringToFront();
       await flow.waitForTimeout(8000);
-      done = (await waitForCompletion(before)) && done;
+      done = (await waitForCompletion(before, redoPrompts.length, redoPrompts)) && done;
       const txt = await dumpUiText(ui, "05-retry" + pass + "-ui-end-text.txt");
       await ui.screenshot({ path: path.join(DEBUG_DIR, "05-retry" + pass + "-ui-end.png") });
       parseQueue(txt, redoPrompts).forEach((r, k) => {
@@ -423,27 +446,43 @@ async function dumpUiText(ui, name) {
   EVID.results = prompts.map((p, i) => ({ index: i + 1, prompt: p.slice(0, 80), state: state[i].state, ui_status: state[i].ui_status, attempts: state[i].attempts }));
   const count = (s) => EVID.results.filter((r) => r.state === s).length;
   const expectedImages = prompts.length * WANT.count;
+  const completed = count('GENERATION_COMPLETED');
+  const failedPrompts = count('GENERATION_FAILED');
+  const unfinished = prompts.length - completed - failedPrompts;
+  const over = detectOverGeneration({ found: img.accepted + img.rejected, expected: expectedImages });
+  const verdict = computeBatchStatus({
+    imagesAccepted: img.accepted, expectedImages, imagesWrongRatio: img.rejected,
+    failedPrompts, unfinishedPrompts: unfinished, overGenerated: over.over, extraImages: over.extra,
+    extensionDone: done, settingsVerified: !!EVID.flow.settings.verified
+  });
   EVID.summary = {
+    batch_status: verdict.status, status_reasons: verdict.reasons,
     prompts: prompts.length, wanted: { model: WANT.model, ratio: ASP.label, per_prompt: WANT.count },
-    settings_verified: EVID.flow.settings.verified, extension_done: done,
-    generation_completed: count('GENERATION_COMPLETED'), generation_failed: count('GENERATION_FAILED'),
-    expected_images: expectedImages, images_accepted: img.accepted, images_wrong_ratio: img.rejected
+    settings_verified: EVID.flow.settings.verified, settings_verdict: EVID.flow.settings.verdict,
+    extension_done: done, completion_via: completionVia || null,
+    generation_completed: completed, generation_failed: failedPrompts, generation_unfinished: unfinished,
+    expected_images: expectedImages, images_accepted: img.accepted, images_wrong_ratio: img.rejected,
+    over_generated: over.over, extra_images: over.extra
   };
   writeEvidence();
-  fs.writeFileSync(path.join(FINAL_DIR, "manifest.json"), JSON.stringify({ generated_at: new Date().toISOString(), summary: EVID.summary, prompts: EVID.results, images: img.items, note: "Image-to-prompt order is by download time only." }, null, 2));
+  fs.writeFileSync(path.join(FINAL_DIR, "manifest.json"), JSON.stringify({ generated_at: new Date().toISOString(), batch_status: verdict.status, status_reasons: verdict.reasons, summary: EVID.summary, prompts: EVID.results, images: img.items, note: "Images keep the descriptive names ZAPI FLOW labeling gave them (see original_name). Image-to-prompt order is not tracked." }, null, 2));
   console.log('PROMPT_RESULTS', JSON.stringify(EVID.results.map((r) => r.index + ':' + r.state)));
   console.log('EVIDENCE_SUMMARY', JSON.stringify(EVID.summary), 'http_errors=' + EVID.http.length, 'console_errors=' + EVID.console.length, 'failed_requests=' + EVID.requestFailed.length);
-  console.log("RESULT prompts=" + prompts.length + " expected_images=" + expectedImages + " accepted=" + img.accepted + " wrong_ratio=" + img.rejected + " extension_done=" + done);
+  console.log("RESULT prompts=" + prompts.length + " expected_images=" + expectedImages + " accepted=" + img.accepted + " wrong_ratio=" + img.rejected + " extra=" + over.extra + " extension_done=" + done);
+  console.log("BATCH_STATUS " + verdict.status + (verdict.reasons.length ? " | " + verdict.reasons.join("; ") : ""));
 
-  const partial = !done || img.rejected > 0 || img.accepted < expectedImages || EVID.summary.generation_failed > 0;
   if (process.env.GITHUB_STEP_SUMMARY) {
     const s = EVID.summary;
-    const md = ["### Flow batch result", "", "| Item | Value |", "|---|---|",
+    const md = ["### Flow batch result: " + s.batch_status, "", verdict.reasons.length ? "Reasons: " + verdict.reasons.join("; ") : "All prompts completed and verified.", "", "| Item | Value |", "|---|---|",
       "| Prompts | " + s.prompts + " |", "| Wanted | " + s.wanted.model + ", " + s.wanted.ratio + ", x" + s.wanted.per_prompt + " |",
-      "| Settings verified | " + s.settings_verified + " |", "| Generation completed / failed | " + s.generation_completed + " / " + s.generation_failed + " |",
-      "| Images kept (right ratio) | " + s.images_accepted + " of " + s.expected_images + " expected |", "| Images rejected (wrong ratio) | " + s.images_wrong_ratio + " (in downloads/rejected) |", ""].join(NL);
+      "| Settings verified | " + s.settings_verified + " (" + s.settings_verdict + ") |", "| Generation completed / failed / unfinished | " + s.generation_completed + " / " + s.generation_failed + " / " + s.generation_unfinished + " |",
+      "| Images kept (right ratio) | " + s.images_accepted + " of " + s.expected_images + " expected |", "| Images rejected (wrong ratio) | " + s.images_wrong_ratio + " (in downloads/rejected) |",
+      "| Extra images beyond request | " + s.extra_images + " |", ""].join(NL);
     try { fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + NL); } catch (e) {}
   }
-  if (img.accepted === 0) { console.log("::error::No usable images were produced"); process.exit(1); }
-  if (partial) console.log("::warning::Partial result - kept " + img.accepted + " image(s); see manifest.json, debug/flow-network.json and downloads/rejected");
+  if (verdict.status === "FAILED") { console.log("::error::Batch FAILED - " + verdict.reasons.join("; ")); process.exit(1); }
+  if (verdict.status === "PARTIAL_SUCCESS") {
+    console.log("::warning::PARTIAL_SUCCESS - kept " + img.accepted + " image(s); " + verdict.reasons.join("; ") + ". See manifest.json, debug/flow-network.json and downloads/rejected");
+    if (cfg.failOnPartial === true) process.exit(1);
+  }
 })().catch((e) => { console.error(e.message || e); try { EVID.error = redact(e && e.message); writeEvidence(); } catch (_) {} process.exit(1); });
