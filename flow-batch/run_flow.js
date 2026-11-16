@@ -19,6 +19,48 @@ fs.mkdirSync(DEBUG_DIR, { recursive: true });
 
 const NL = String.fromCharCode(10);
 
+const EVID = { timeline: [], console: [], pageErrors: [], http: [], requestFailed: [], flow: {}, results: [] };
+function mark(ev) { EVID.timeline.push({ t: new Date().toISOString(), event: ev }); }
+function redact(s) { return String(s || '').replace(/[A-Za-z0-9_-]{40,}/g, '[redacted]').slice(0, 300); }
+function safeUrl(u) { try { const x = new URL(u); return x.host + x.pathname; } catch (e) { return redact(u); } }
+function attachDiagnostics(pg) {
+  pg.on('console', (m) => { if (m.type() === 'error' && EVID.console.length < 100) EVID.console.push({ t: new Date().toISOString(), text: redact(m.text()) }); });
+  pg.on('pageerror', (e) => { if (EVID.pageErrors.length < 50) EVID.pageErrors.push(redact(e && e.message)); });
+  pg.on('requestfailed', (r) => { if (EVID.requestFailed.length < 100) EVID.requestFailed.push({ t: new Date().toISOString(), method: r.method(), url: safeUrl(r.url()), reason: redact(r.failure() && r.failure().errorText) }); });
+  pg.on('response', async (r) => {
+    try {
+      if (r.status() < 400 || EVID.http.length >= 100) return;
+      const row = { t: new Date().toISOString(), status: r.status(), method: r.request().method(), url: safeUrl(r.url()) };
+      if (new URL(r.url()).host.indexOf('google') !== -1) { const b = await r.text().catch(() => ''); row.body = redact(b); }
+      EVID.http.push(row);
+    } catch (e) {}
+  });
+}
+async function snapshot(pg, name) {
+  const t = await pg.locator('body').innerText().catch(() => '');
+  fs.writeFileSync(path.join(DEBUG_DIR, name + '-text.txt'), t.slice(0, 4000));
+  await pg.screenshot({ path: path.join(DEBUG_DIR, name + '.png'), timeout: 10000 }).catch(() => {});
+  return { url: safeUrl(pg.url()), title: await pg.title().catch(() => '') };
+}
+function writeEvidence() { fs.writeFileSync(path.join(DEBUG_DIR, 'flow-network.json'), JSON.stringify(EVID, null, 2)); }
+function parseQueue(text, prompts) {
+  const lines = text.split(NL).map((s) => s.trim());
+  const start = lines.findIndex((l) => l.toUpperCase() === 'QUEUE');
+  const map = { PENDING: 'PROMPT_QUEUED', GENERATING: 'GENERATION_IN_PROGRESS', FAILED: 'GENERATION_FAILED', DONE: 'GENERATION_COMPLETED' };
+  const toks = Object.keys(map);
+  const res = [];
+  if (start < 0) return res;
+  for (let i = start + 1; i < lines.length; i++) {
+    const u = lines[i].toUpperCase();
+    if (u.indexOf('AUTO DOWNLOAD') === 0) break;
+    if (u.length > 20) continue;
+    const tok = toks.find((x) => u.indexOf(x) === 0);
+    if (!tok) continue;
+    res.push({ index: res.length + 1, prompt: String(prompts[res.length] || '').slice(0, 80), ui_status: lines[i], state: map[tok] });
+  }
+  return res;
+}
+
 // .json: array of strings or {prompt}. .txt: prompts separated by a blank line.
 // Each prompt is flattened to ONE line because ZAPI FLOW queues one prompt per line.
 function loadPrompts() {
@@ -170,8 +212,12 @@ async function dumpUiText(ui, name) {
   console.log("Extension id:", extId);
 
   const flow = await context.newPage();
+  attachDiagnostics(flow);
+  mark('flow_page_opened');
   await flow.goto(FLOW_URL, { waitUntil: "domcontentloaded" });
   await flow.waitForTimeout(12000);
+  EVID.flow.afterLoad = await snapshot(flow, '01b-flow-load');
+  console.log('Flow after load:', JSON.stringify(EVID.flow.afterLoad));
   await flow.screenshot({ path: path.join(DEBUG_DIR, "01-flow.png") });
   const fu = new URL(flow.url());
   console.log("Flow page host/path:", fu.host + fu.pathname);
@@ -200,8 +246,12 @@ async function dumpUiText(ui, name) {
     throw new Error("Start button stayed disabled - the Flow tab must be inside an open Flow project (check repo variable FLOW_PROJECT_URL) and Agent mode must be off");
   }
   await ui.screenshot({ path: path.join(DEBUG_DIR, "03-filled.png") });
+  EVID.flow.beforeStart = await snapshot(flow, '03d-flow-before-start');
+  fs.writeFileSync(path.join(DEBUG_DIR, 'downloads-before.json'), JSON.stringify(listFiles(DL_DIR, []).map((f) => path.basename(f))));
+  mark('before_start_click');
   await ui.locator(cfg.selectors.startButton).click();
   await flow.bringToFront();
+  mark('after_start_click');
   console.log("Start clicked");
   await flow.waitForTimeout(8000);
   const early = await ui.locator(cfg.selectors.status).innerText().catch(() => "");
@@ -229,10 +279,19 @@ async function dumpUiText(ui, name) {
   await flow.screenshot({ path: path.join(DEBUG_DIR, "04-end.png") });
   await ui.screenshot({ path: path.join(DEBUG_DIR, "04-ui-end.png") });
   await dumpUiText(ui, "04-ui-end-text.txt");
+  EVID.flow.end = await snapshot(flow, '04b-flow-end');
+  mark('extension_finished_' + done);
   await flow.waitForTimeout(cfg.settleSeconds * 1000);
   await context.close();
 
   const valid = collectImages();
+  const endText = fs.readFileSync(path.join(DEBUG_DIR, '04-ui-end-text.txt'), 'utf8');
+  EVID.results = parseQueue(endText, prompts);
+  EVID.results.filter((r) => r.state === 'GENERATION_COMPLETED').forEach((r, i) => { if (i < valid) r.state = 'IMAGE_DOWNLOADED'; });
+  EVID.summary = { expected: prompts.length, valid_images: valid, extension_done: done, failed: EVID.results.filter((r) => r.state === 'GENERATION_FAILED').length, downloaded: EVID.results.filter((r) => r.state === 'IMAGE_DOWNLOADED').length };
+  writeEvidence();
+  console.log('PROMPT_RESULTS', JSON.stringify(EVID.results.map((r) => r.index + ':' + r.state)));
+  console.log('EVIDENCE_SUMMARY', JSON.stringify(EVID.summary), 'http_errors=' + EVID.http.length, 'console_errors=' + EVID.console.length, 'failed_requests=' + EVID.requestFailed.length);
   console.log("RESULT expected=" + prompts.length + " valid_images=" + valid + " extension_done=" + done);
   if (!done || valid < prompts.length) process.exit(1);
-})().catch((e) => { console.error(e.message || e); process.exit(1); });
+})().catch((e) => { console.error(e.message || e); try { EVID.error = redact(e && e.message); writeEvidence(); } catch (_) {} process.exit(1); });
