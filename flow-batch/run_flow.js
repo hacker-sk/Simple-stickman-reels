@@ -4,6 +4,7 @@ const path = require("path");
 const zlib = require("zlib");
 const crypto = require("crypto");
 const { chromium } = require("playwright");
+const { applyFlowSettings } = require("./flow_helpers");
 
 const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8"));
 const FLOW_URL = process.env.FLOW_URL || cfg.flowUrl;
@@ -12,6 +13,8 @@ const DL_DIR = path.resolve(__dirname, "downloads");
 const RAW_DIR = path.join(DL_DIR, "raw");
 const FINAL_DIR = path.join(DL_DIR, "final");
 const DEBUG_DIR = path.resolve(__dirname, "debug");
+const SESS_DIR = path.resolve(__dirname, "session");
+const SESS_FILE = path.join(SESS_DIR, "cookies.json");
 const PROMPTS_FILE = path.resolve(__dirname, process.env.PROMPTS_FILE || "prompts/batch.json");
 fs.mkdirSync(RAW_DIR, { recursive: true });
 fs.mkdirSync(FINAL_DIR, { recursive: true });
@@ -109,6 +112,19 @@ function loadCookies() {
   return out;
 }
 
+// Session carried over from a previous successful run (workflow cache, if enabled). Google rotates session cookies,
+// so the freshest copy is the one that still works. Never logged, never uploaded as an artifact.
+function loadSavedCookies() {
+  try {
+    const a = JSON.parse(fs.readFileSync(SESS_FILE, "utf8"));
+    return Array.isArray(a) && a.length ? a : null;
+  } catch (e) { return null; }
+}
+function saveCookies(list) {
+  fs.mkdirSync(SESS_DIR, { recursive: true });
+  fs.writeFileSync(SESS_FILE, JSON.stringify(list.filter((c) => /google\./.test(c.domain || ""))));
+}
+
 function imgType(buf) {
   if (buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return ".png";
   if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return ".jpg";
@@ -196,8 +212,6 @@ async function dumpUiText(ui, name) {
     };
   });
 
-  await context.addCookies(loadCookies());
-
   let extId = process.env.EXT_ID || "";
   if (!extId) {
     try {
@@ -214,23 +228,51 @@ async function dumpUiText(ui, name) {
   const flow = await context.newPage();
   attachDiagnostics(flow);
   mark('flow_page_opened');
-  await flow.goto(FLOW_URL, { waitUntil: "domcontentloaded" });
-  await flow.waitForTimeout(12000);
+
+  // Try a saved session first (if present), then the FLOW_COOKIES_B64 secret.
+  // A logged-in project URL must stay on /project/...; Google sends signed-out visitors to the public /about page.
+  const candidates = [];
+  const saved = loadSavedCookies();
+  if (saved) candidates.push(["saved-session", saved]);
+  if (process.env.FLOW_COOKIES_B64) candidates.push(["FLOW_COOKIES_B64", loadCookies()]);
+  if (!candidates.length) throw new Error("FLOW_COOKIES_B64 secret is missing and no saved session exists");
+  let authed = false;
+  for (const [label, cookies] of candidates) {
+    await context.clearCookies();
+    await context.addCookies(cookies);
+    await flow.goto(FLOW_URL, { waitUntil: "domcontentloaded" });
+    await flow.waitForTimeout(12000);
+    const onProject = /\/project\//.test(flow.url()) && flow.url().indexOf("accounts.google.com") === -1;
+    mark('auth_attempt_' + label + '_' + (onProject ? 'ok' : 'rejected'));
+    console.log("Auth attempt:", label, "->", safeUrl(flow.url()), "| on project:", onProject);
+    if (onProject) { authed = true; break; }
+  }
   EVID.flow.afterLoad = await snapshot(flow, '01b-flow-load');
   console.log('Flow after load:', JSON.stringify(EVID.flow.afterLoad));
   await flow.screenshot({ path: path.join(DEBUG_DIR, "01-flow.png") });
-  const fu = new URL(flow.url());
-  console.log("Flow page host/path:", fu.host + fu.pathname);
-  const signedOut = flow.url().includes("accounts.google.com") ||
-    (await flow.getByRole("button", { name: /^sign in$/i }).count().catch(() => 0)) > 0 ||
-    (await flow.getByRole("link", { name: /^sign in$/i }).count().catch(() => 0)) > 0;
-  if (signedOut) throw new Error("AUTH FAILED: Google rejected or expired the restored session (new device/IP or expired cookies) - re-export cookies and update FLOW_COOKIES_B64");
+  if (!authed) throw new Error("AUTH FAILED: Flow did not open the project (ended on " + safeUrl(flow.url()) + "). Google rejected the cookies (expired, rotated or blocked for this server) - re-export fresh cookies from a private/incognito window and update FLOW_COOKIES_B64");
+  try { saveCookies(await context.cookies()); } catch (e) {}
+
+  EVID.flow.settings = await applyFlowSettings(flow, cfg.flowSettings || { agent: "off", model: "Nano Banana 2 Lite", aspect: "portrait", count: 1 }, DEBUG_DIR);
+  console.log("Flow settings verified:", EVID.flow.settings.verified);
 
   const ui = await context.newPage();
   await ui.goto("chrome-extension://" + extId + "/" + cfg.extensionPage);
   await ui.waitForTimeout(4000);
   await ui.screenshot({ path: path.join(DEBUG_DIR, "02-ui.png") });
   await dumpUiText(ui, "02-ui-text.txt");
+
+  // Diagnostic only: record the extension's own generation-settings controls, then close the section again.
+  try {
+    const gs = ui.getByText(/generation settings/i).first();
+    await gs.click({ timeout: 3000 });
+    await ui.waitForTimeout(800);
+    await dumpUiText(ui, "02c-ui-settings-text.txt");
+    const ctrls = await ui.evaluate(() => [...document.querySelectorAll('input,select,textarea,button')].map((e) => ({ tag: e.tagName.toLowerCase(), id: e.id, type: e.type || '', label: String(e.getAttribute('aria-label') || e.innerText || e.value || '').slice(0, 40) })).slice(0, 80));
+    fs.writeFileSync(path.join(DEBUG_DIR, "02c-ui-controls.json"), JSON.stringify(ctrls, null, 2));
+    await ui.screenshot({ path: path.join(DEBUG_DIR, "02c-ui-settings.png") });
+    await gs.click({ timeout: 3000 }).catch(() => {});
+  } catch (e) { console.log("Extension settings section not inspected:", String(e.message).slice(0, 100)); }
 
   // ZAPI FLOW: one prompt per line
   const block = prompts.join(NL);
@@ -282,6 +324,7 @@ async function dumpUiText(ui, name) {
   EVID.flow.end = await snapshot(flow, '04b-flow-end');
   mark('extension_finished_' + done);
   await flow.waitForTimeout(cfg.settleSeconds * 1000);
+  try { if (/\/project\//.test(flow.url())) saveCookies(await context.cookies()); } catch (e) {}
   await context.close();
 
   const valid = collectImages();
