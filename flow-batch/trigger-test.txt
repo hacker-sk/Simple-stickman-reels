@@ -1,1 +1,1 @@
-Test run requested 2026-11-16 18:12 IST: 5 doodle prompts (prompts/doodle5.txt), Nano Banana Lite, portrait 9:16, x1, with chip-verified settings. Editing this file starts one Flow Batch run.
+Test run requested 2026-11-16 19:45 IST: 5 doodle prompts (prompts/doodle5.txt), Nano Banana Lite, portrait 9:16, x1, to verify the reliability changes (whole-queue completion, status, over-generation, original ZAPI FLOW file names). Editing this file starts one Flow Batch run.
