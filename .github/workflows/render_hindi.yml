@@ -6,9 +6,6 @@ on:
       payload:
         description: "JSON payload sent by n8n"
         required: true
-  push:
-    paths:
-      - "jobs/reel.json"
 
 jobs:
   render:
@@ -42,7 +39,7 @@ jobs:
 
       - name: Render the video
         env:
-          PAYLOAD: ${{ inputs.payload || '{"job_path":"jobs/reel.json"}' }}
+          PAYLOAD: ${{ inputs.payload }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
@@ -89,5 +86,5 @@ jobs:
       - name: Tell n8n the job failed
         if: failure()
         env:
-          PAYLOAD: ${{ inputs.payload || '{"job_path":"jobs/reel.json"}' }}
+          PAYLOAD: ${{ inputs.payload }}
         run: python render_hindi.py --notify-failure
