@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Google Flow images for the Hindi Shorts pipeline (voice + real word timing + time tags version).
+"""Google Flow images for the Hindi Shorts pipeline (voice + forced-alignment timing + scene-number tags version).
 
 prepare : package JSON -> 1) the voiceover is made FIRST (the same make_voice the renderer uses), 2) the word timing of that voice is
-          worked out with the renderer's own align_words (WhisperX, or ElevenLabs timestamps) and every scene's start time is taken
-          from it with the same pause snapping the renderer uses for its image cuts, 3) every image prompt gets its start time as a tag
-          at the very beginning, e.g. '[0-5] ...' (minute-second, so 1 min 7 s is '[1-7]'). If the word timing fails, the start times
-          are estimated from the voice length instead (old behaviour), so Flow still runs.
+          worked out by FORCED ALIGNMENT of the known narration (pipeline/align_forced.py); if that fails or looks wrong, the renderer's
+          own align_words (WhisperX transcription, or ElevenLabs timestamps) is used, and if that fails too the times are estimated from
+          the voice length. Every scene's start time is taken from the word timing with the same pause snapping the renderer uses.
+          3) every image prompt gets its scene number as a tag at the very beginning, e.g. '[s01] ...', '[s07] ...'. The tag only makes
+          each prompt unique; the Flow job matches a Flow image to its prompt through Flow's own media ids, not through the tag.
           Writes flow-batch/prompts/shorts_flow.json (the tagged prompts), shorts_flow_meta.json (scene index -> tag, narration hash,
           timing source), shorts_flow_voice.wav (reused by the renderer, so the times stay true) and, when the word timing worked,
           shorts_flow_words.json (reused by the renderer so Whisper does not run a second time).
           Sets the step output flow=true ONLY when the voice and prompts worked; otherwise Flow is skipped.
-match   : (used by render_hindi_flow.py) reads the tag out of every Flow image file name and gives each scene the image with
-          its tag. A scene without a matching tagged image gets no Flow image, so the normal providers (Cloudflare ...) make it.
-          If the narration changed since prepare (hash differs), no Flow image is used at all.
+match   : (used by render_hindi_flow.py) the Flow job saves each image as scene_NN.<ext> (NN = the NN-th Flow prompt). This gives each
+          scene the image with its number. Older tag-in-file-name matching is kept as a fallback. A scene without a matching image gets
+          no Flow image, so the normal providers (Cloudflare ...) make it. If the narration changed since prepare (hash differs), no
+          Flow image is used at all.
           Optional extra (off by default): FLOW_VISION_FALLBACK=true lets Gemini 3.1 vision place untagged images.
 Everything is best effort: any problem means fewer (or no) Flow images, never a failed video.
 """
@@ -44,6 +46,7 @@ MIN_BYTES = 3000
 
 TAG_BRACKET = re.compile(r'\[(\d{1,2})-(\d{1,2})\]')
 TAG_LOOSE = re.compile(r'(?<![0-9A-Za-z])(\d{1,2})[-_](\d{1,2})(?![0-9A-Za-z])')
+SCENE_FILE = re.compile(r'^scene_(\d+)\.', re.I)
 
 
 def log(*a):
@@ -88,12 +91,23 @@ def scene_starts(scenes, dur):
 
 
 def real_timing(rh, scenes, voice_path, dur):
-    """(words, bounds) from the renderer's own align_words and the same pause snapping render_hindi.main() uses for its image cuts.
-    words = [(word, start, end)], bounds[i] = start second of scene i. Raises when the timing cannot be made."""
+    """(words, bounds, aligner). words = [(word, start, end)], bounds[i] = start second of scene i, aligner = 'forced' or 'whisper'.
+    Forced alignment of the known script first; the renderer's own align_words (same pause snapping as render_hindi.main()) as the
+    second choice. Raises when neither can make a timing."""
     script_words = narration_of(scenes).split()
-    words = rh.align_words(script_words, dur, voice_path)
-    if not words or len(words) != len(script_words):
-        raise RuntimeError('word timing has ' + str(len(words or [])) + ' words, the script has ' + str(len(script_words)))
+    words, aligner = None, ''
+    try:
+        from pipeline import align_forced
+        words = align_forced.forced_words(script_words, dur, voice_path, log=log)
+        aligner = 'forced'
+    except Exception as e:  # noqa
+        words = None
+        log('forced alignment not used, falling back to the renderer timing: ' + str(e)[:200])
+    if not words:
+        words = rh.align_words(script_words, dur, voice_path)
+        aligner = 'whisper'
+        if not words or len(words) != len(script_words):
+            raise RuntimeError('word timing has ' + str(len(words or [])) + ' words, the script has ' + str(len(script_words)))
     first_words = []
     wi = 0
     for s in scenes[:-1]:
@@ -107,20 +121,7 @@ def real_timing(rh, scenes, voice_path, dur):
         if cand:
             b = min(cand, key=lambda m: abs(m - b))
         bounds.append(max(bounds[-1] + 0.8, b))
-    return words, bounds
-
-
-def make_tags(indexes, starts):
-    """Unique (minute, second) per scene. Two scenes in the same second push the later one to the next free second."""
-    used = set()
-    out = {}
-    for i in indexes:
-        sec = int(starts.get(i, 0.0))
-        while sec in used:
-            sec += 1
-        used.add(sec)
-        out[i] = (sec // 60, sec % 60)
-    return out
+    return words, bounds, aligner
 
 
 def load_scenes(raw):
@@ -184,20 +185,21 @@ def cmd_prepare(a):
         log('voiceover could not be made, Flow is skipped and the normal image providers are used: ' + str(e)[:200])
         return 0
 
-    # scene start times: real word timing of this voice (same code as the renderer), else the old estimate
-    timing, words = 'estimate', None
+    # scene start times: forced alignment (else the renderer's word timing), else the old estimate
+    timing, aligner, words = 'estimate', '', None
     try:
-        words, bounds = real_timing(rh, scenes, a.voice, dur)
+        words, bounds, aligner = real_timing(rh, scenes, a.voice, dur)
         starts = dict((i, bounds[i]) for i in range(len(scenes)))
         timing = 'audio'
-        log('scene start times taken from the real word timing of the voice (' + str(len(words)) + ' words)')
+        log('scene start times taken from the ' + aligner + ' word timing of the voice (' + str(len(words)) + ' words)')
     except Exception as e:  # noqa
         words = None
         starts = scene_starts(scenes, dur)
         log('word timing of the voice failed, scene start times are estimated from the voice length instead: ' + str(e)[:200])
 
-    tags = make_tags(items, starts)
-    prompts = ['[' + str(tags[i][0]) + '-' + str(tags[i][1]) + '] ' + str(scenes[i]['image_prompt']).strip() for i in items]
+    # The tag is the scene number: stable, unique, independent of the timing.
+    tags = dict((i, 's%02d' % (i + 1)) for i in items)
+    prompts = ['[' + tags[i] + '] ' + str(scenes[i]['image_prompt']).strip() for i in items]
     os.makedirs(os.path.dirname(os.path.abspath(a.prompts)), exist_ok=True)
     with open(a.prompts, 'w', encoding='utf-8') as fh:
         json.dump(prompts, fh, ensure_ascii=False, indent=1)
@@ -208,26 +210,26 @@ def cmd_prepare(a):
         words_path = a.words or os.path.join(os.path.dirname(os.path.abspath(a.voice)), WORDS_NAME)
         try:
             with open(words_path, 'w', encoding='utf-8') as fh:
-                json.dump({'narration_sha': nsha, 'voice_seconds': round(dur, 2),
+                json.dump({'narration_sha': nsha, 'voice_seconds': round(dur, 2), 'aligner': aligner,
                            'words': [[w, round(float(s), 3), round(float(e), 3)] for w, s, e in words]}, fh, ensure_ascii=False)
             words_name = os.path.basename(words_path)
         except Exception as e:  # noqa
             log('word timing could not be saved, the renderer will run its own: ' + str(e)[:120])
 
     meta = {'scene_count': len(scenes), 'narration_sha': nsha, 'voice_file': VOICE_NAME, 'voice_seconds': round(dur, 2),
-            'timing': timing, 'words_file': words_name,
-            'scenes': [{'index': i, 'tag': str(tags[i][0]) + '-' + str(tags[i][1]), 'start': round(starts.get(i, 0.0), 2)} for i in items]}
+            'timing': timing, 'aligner': aligner, 'words_file': words_name,
+            'scenes': [{'index': i, 'tag': tags[i], 'start': round(starts.get(i, 0.0), 2)} for i in items]}
     with open(a.meta, 'w', encoding='utf-8') as fh:
         json.dump(meta, fh, ensure_ascii=False, indent=1)
-    log('voice ' + str(round(dur, 1)) + 's made, timing=' + timing + ', words saved=' + str(bool(words_name)) + '; ' + str(len(prompts)) +
-        ' Flow prompts tagged: ' + ' | '.join('[' + m['tag'] + '] scene ' + str(m['index'] + 1) for m in meta['scenes']))
+    log('voice ' + str(round(dur, 1)) + 's made, timing=' + timing + ' (' + (aligner or 'none') + '), words saved=' + str(bool(words_name)) + '; ' + str(len(prompts)) +
+        ' Flow prompts tagged: ' + ' | '.join('[' + m['tag'] + '] starts ' + str(m['start']) + 's' for m in meta['scenes']))
     set_output('flow', 'true')
     return 0
 
 
 # ----------------------------------------------------------------------------- match
 def parse_tag(filename):
-    """(minute, second) tag found in a file name, or None. Accepts '[0-5]' and the forms a downloader makes of it ('0-5', '0_5')."""
+    """(minute, second) tag found in a file name, or None. Legacy: accepts '[0-5]' and the forms a downloader makes of it ('0-5', '0_5')."""
     stem = os.path.splitext(os.path.basename(filename))[0]
     stem = re.sub(r'^\d{10,}-', '', stem)
     m = TAG_BRACKET.search(stem) or TAG_LOOSE.search(stem)
@@ -374,7 +376,8 @@ def vision_scores(image, scene_rows, start_key=0):
 
 
 def build_map(scenes, flow_dir, work_dir=None):
-    """{scene index: absolute image path} for the scenes whose tag was found in a Flow image file name."""
+    """{scene index: absolute image path}. First choice: files named scene_NN.<ext> (NN = position of the prompt in the Flow batch,
+    which is the position in meta['scenes']). Second choice: the legacy tag in the file name. Optional third: Gemini vision."""
     images = find_images(flow_dir)
     if not images:
         log('no Flow images found in ' + flow_dir + ', the normal providers make every image')
@@ -386,27 +389,41 @@ def build_map(scenes, flow_dir, work_dir=None):
     if meta.get('narration_sha') and meta.get('narration_sha') != sha(narration_of(scenes)):
         log('hash mismatch: the narration changed since the Flow images were made, so they may not fit. The normal providers make every image')
         return {}
-    parsed = [(im, parse_tag(im['name'])) for im in images]
-    log(str(len(images)) + ' Flow images, tags read from the file names: ' +
-        ', '.join(im['name'] + ' -> ' + (('[' + str(t[0]) + '-' + str(t[1]) + ']') if t else 'no tag') for im, t in parsed))
+    log(str(len(images)) + ' Flow images: ' + ', '.join(im['name'] for im in images))
+    assigned, method, used = {}, {}, set()
+
+    # 1) scene_NN files written by the Flow job (matched there through Flow's media ids)
+    by_pos = {}
+    for im in images:
+        mm = SCENE_FILE.match(im['name'])
+        if mm:
+            by_pos.setdefault(int(mm.group(1)), im)
+    for pos, m in enumerate(meta['scenes'], 1):
+        i = m.get('index')
+        im = by_pos.get(pos)
+        if im and isinstance(i, int) and 0 <= i < len(scenes) and im['name'] not in used:
+            assigned[i] = im
+            used.add(im['name'])
+            method[i] = 'scene_file'
+    log('scene_NN files placed ' + str(len(assigned)) + ' of ' + str(len(meta['scenes'])) + ' scenes')
+
+    # 2) legacy: tag in the file name (never touches scene_/unmatched_ files)
+    legacy = [im for im in images if not re.match(r'^(scene|unmatched)_', im['name'], re.I)]
     by_tag = {}
-    for im, t in parsed:
+    for im in legacy:
+        t = parse_tag(im['name'])
         if t:
             by_tag.setdefault(t, []).append(im)
-    assigned, method, used = {}, {}, set()
     for m in meta['scenes']:
         i, tag = m.get('index'), str(m.get('tag') or '')
         mm = re.match(r'^(\d+)-(\d+)$', tag)
-        if not isinstance(i, int) or not mm or not (0 <= i < len(scenes)):
+        if not isinstance(i, int) or i in assigned or not mm or not (0 <= i < len(scenes)):
             continue
         cands = [c for c in by_tag.get((int(mm.group(1)), int(mm.group(2))), []) if c['name'] not in used]
         if cands:
-            if len(cands) > 1:
-                log('tag [' + tag + '] is on ' + str(len(cands)) + ' images, using the first one made')
             assigned[i] = cands[0]
             used.add(cands[0]['name'])
             method[i] = 'tag'
-    log('tag matching placed ' + str(len(assigned)) + ' of ' + str(len(meta['scenes'])) + ' scenes')
 
     if os.environ.get('FLOW_VISION_FALLBACK', '').strip().lower() == 'true':
         left_s = sorted(m['index'] for m in meta['scenes'] if isinstance(m.get('index'), int) and m['index'] not in assigned)
@@ -429,7 +446,7 @@ def build_map(scenes, flow_dir, work_dir=None):
     result = dict((i, im['path']) for i, im in assigned.items())
     log('Flow images will be used for ' + str(len(result)) + ' of ' + str(len(scenes)) + ' scenes: ' +
         ', '.join(str(i + 1) + '=' + assigned[i]['name'] + ' (' + method[i] + ')' for i in sorted(assigned)) +
-        ' | the other scenes use the normal providers')
+        ' | the other scenes use the normal providers (' + ', '.join(str(i + 1) for i in range(len(scenes)) if i not in assigned and any(m.get('index') == i for m in meta['scenes'])) + ')')
     if work_dir:
         try:
             os.makedirs(work_dir, exist_ok=True)
