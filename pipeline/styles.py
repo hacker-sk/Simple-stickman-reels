@@ -1,8 +1,11 @@
-"""Art styles ported verbatim from the n8n node 'Pick Art Style'.
+"""Prebuilt art styles for the Hindi Shorts pipeline.
 
-The scheduled pipeline always used the 'painterly' style (the Telegram style choice was the only thing that selected
-another one), so painterly is the default here and the others stay available through the manual workflow input.
+Six hand-drawn 2D storybook styles. When no style is chosen (no art_style in the chat package and the workflow input
+art_style left on random or empty, which is also the case for scheduled runs), one of them is picked at random.
+The full style description of each style is kept word for word in 'look'. The image model only reads about the first
+250 word pieces of a prompt, so the prompt writer ends every prompt with a short style sentence built from that wording.
 """
+import random
 
 
 def J(a):
@@ -11,88 +14,87 @@ def J(a):
 
 STYLES = {}
 
-STYLES['painterly'] = {
-    'name': 'Emotional Painterly Storybook',
-    'open': '',
-    'close': '',
-    'look': 'Hand-painted emotional storybook illustration: a fusion of traditional gouache storybook painting, contemporary editorial painting and cinematic digital concept art. It looks genuinely hand-painted, with rich visible brushstrokes, natural watercolor pigment variations, subtle paper grain and canvas-like texture, layered painterly colour and organic imperfections, never a photograph with a watercolor filter applied. Rich, immersive environments with layered depth and meaningful details. Vibrant yet harmonious colours, not equally saturated in every image, never dull or lifeless. Cinematic, atmospheric lighting with soft light rays and strong colour contrast. Avoid: photorealism, 3D CGI, plastic skin, generic anime, childish cartoons, flat vector art, stick figures, heavy outlines, stock-image look, text, captions, watermarks and logos.',
-    'rules': J([
-        'PROMPT LENGTH: write one English image prompt of 110 to 140 words for every chunk.',
-        'CHARACTER LOOK: a fixed appearance means age, face, hair, build, clothing, colours and one distinguishing feature. When a person is shown, give them a distinctive individual look (not a generic face) and let their eyes, face, posture and gesture carry the emotion of the phrase, like a character from an illustrated animated film, with natural semi-realistic proportions, natural hair, everyday clothing with believable folds and fabric, and a skin tone that fits the character.',
-        'ENVIRONMENTS: Make environments rich and immersive, with layered foreground, middle ground and background and meaningful details. For everyday-life moments prefer believable Indian settings with fitting clothing (homes, streets, villages, markets, tea stalls, railway stations, schools, rooftops), unless the narration points elsewhere. Other fitting settings are modern cities, apartments, cafes, nature, forests, mountains, rivers, and dreamlike symbolic worlds with floating stairs, oversized clocks, symbolic doors or impossible landscapes when a visual metaphor tells the phrase better. Use dramatic weather such as rain, fog, sunset or empty roads when it supports the feeling.',
-        'COLOUR AND MOOD: Decide the emotional mood of each chunk from the story and describe its colours and lighting to match: happiness uses golden yellow, coral and turquoise; sadness or loneliness uses deep blue, lavender and muted teal; hope uses emerald green, warm orange and golden light; anger or betrayal uses burgundy, dark teal and burnt orange; nostalgia uses warm cream, ochre and faded green. Do not make every image equally saturated, and never make an image dull or lifeless. Use cinematic lighting with atmospheric depth, soft light rays and strong colour contrast.',
-        'ART STYLE IN EVERY PROMPT: Because the image model knows nothing else, end every prompt with one short style sentence of about 20 to 30 words, written in your own words from the ART STYLE given above, for example: Hand-painted gouache and watercolor storybook illustration with visible brushstrokes, soft paper texture, rich harmonious colours and cinematic light. Never mention or mix in any other art style, and never ask for photorealism, 3D, anime, cartoon or flat vector looks. Never include readable words, letters, numbers, logos or watermarks.',
-    ]),
-}
 
-SEPIA_OPEN = 'A 2D hand-drawn doodle illustration on aged sepia parchment paper.'
-SEPIA_CLOSE = 'Crisp black ink outlines, hand-drawn vector stroke style, subtle pencil shading, muted earth tones (brown, tan, beige), retro storybook aesthetic, clean 2D composition.'
-STYLES['sepia'] = {
-    'name': 'Sepia Parchment Vintage Doodle',
-    'open': SEPIA_OPEN,
-    'close': SEPIA_CLOSE,
-    'look': '2D hand-drawn doodle illustration on aged sepia parchment paper: crisp black ink outlines, hand-drawn vector stroke style, subtle pencil shading, muted earth tones (brown, tan, beige), retro storybook aesthetic, clean 2D composition. People are simple stickmen. The scene around the main subject is filled with concrete detail. Best for philosophical and moral stories and for object, animal and metaphor scenes.',
-    'rules': J([
-        'THIS VIDEO USES THE SEPIA PARCHMENT VINTAGE DOODLE STYLE: a 2D hand-drawn doodle look on aged sepia parchment paper, used for philosophical stories, system exposures and object, animal and metaphor scenes. Some images have one or more stickmen as the subject and some have an object, animal or place as the subject. The style is a hand-drawn doodle, but your scene description must be rich with concrete detail so that the whole image looks full and detailed.',
-        'FIXED WRAPPER: the system automatically puts this exact opening sentence before your text and this exact closing sentence after it. Opening: "' + SEPIA_OPEN + '" Closing: "' + SEPIA_CLOSE + '" You write ONLY the scene description that goes between them: never write, repeat, shorten or rewrite any style wording yourself, and never mention any other art style. Your text starts right after the opening sentence, so begin it directly with the subject of the picture.',
-        'WHO OR WHAT IS THE SUBJECT: decide from the narration phrase and the story. If the phrase needs a person or several people, the subject is one or more stickmen and the whole scene is built around them. If the phrase is about an object, an animal, a place, time, nature, a symbol or an idea, the subject is that element, there is no stickman at all, and the whole scene is built around the element. Never add a stickman to an object scene.',
-        'PROMPT LENGTH AND STYLE: the image model reads only about the first 250 small word pieces (tokens, roughly 900 characters) of a prompt and ignores the rest, so the whole prompt, fixed wording included, must stay short. The system adds about 235 characters of fixed wording around your text, so the scene description you write must be between 600 and 670 characters long (about 100 to 110 words) and never longer than 670 characters. Pack as much concrete detail as possible into that space by writing telegraphic phrases: short noun phrases separated by commas, with sizes, counts, colours, textures and positions, and no filler words, no explanations and no repeated ideas. Put the most important things first: the subject, then foreground, mid-ground, background and sky. If a draft is longer than 670 characters, cut the least important details first (minor background items, extra counts) and never cut the subject, the foreground, the background or the sky. If it is shorter than 600 characters, add concrete sizes, textures, counts and positions.',
-        'DETAIL FOR THE IMPORTANT ELEMENTS: the subject and the two or three most visible elements (for example a tree, a hut, a well, a field) each get a size or proportion (for example about twice the height of the hut), a shape or texture (for example thick rough-barked trunk, round olive-green canopy) and a position (left, right, centre, upper, lower, foreground, mid-ground, far background). Minor items get one detail or a count (eight grass tufts, six crop rows). Never name an element without any detail: a tree is never just a tree.',
-        'POSITIVE WORDING ONLY: describe only what is present. Never write no, not, without, never or avoid inside a prompt, because the image model cannot handle negatives and may draw the very thing named.',
-        'FRAMING: use only framings that a flat hand-drawn doodle can show clearly: wide scene, medium shot, close-up, top-down view, side view and low-angle view. A framing word such as close-up or top-down view belongs to the first phrase that names the subject. Do not use silhouettes, backlighting, depth of field, blur, glow or other lens and lighting effects; every element stays drawn with its outline and its details. If a suggested framing in the numbered chunks does not fit this, choose the nearest framing from this list.',
-        'EVERY PROMPT NAMES ALL THESE LAYERS, each as one short phrase group: the subject with its size in the frame and a soft shadow (written first); a textured foreground ground (for example cracked ochre soil with counts of grass tufts and pebbles); a mid-ground (furrowed crop rows, a dirt path, a fence, a well); a background (thatched hut, trees, low hazy hills); a warm sepia sky. Close-ups, top-down views and metaphor scenes also get a short setting around the subject (ground, wall or field).',
-        'WHEN THE SUBJECT IS A STICKMAN: the fixed opening sentence does not describe the stickman, so you do. Start the scene with "A stickman character with a simple round white head, dot eyes and black stick limbs" (blob hands and flat black shoes may be added), then right after it add the individual details: one to three clothing items with colour and fold lines (for example a cream kurta with fold lines, a plain grey shawl, a simple cap, white dhoti with deep creases), an optional small curled black mustache, the posture or action, the direction of the gaze, where the stickman stands in the frame and how much of the frame height it fills. Then continue with the layers around the stickman. Every recurring character keeps the same clothing and colours, written with the same words every time; tell different characters apart by clothing colour and one distinguishing item. A turban is drawn only when the story or the character needs it (for example a village elder or a farmer) and is never added by default; otherwise give the character a bare head, a simple cap or a shawl. Emotion comes from the posture, brows and gesture. When the scene needs more than one person, follow the next rule as well.',
-        'SEVERAL PEOPLE OR A CROWD: whenever the phrase needs more than one person, a group or a crowd, say how many (an exact count for up to about five, otherwise a rough count such as about twelve) and describe every figure or group as concretely as the main subject. Each figure is a stickman with a simple round white head, dot eyes and black stick limbs, plus its own clothing colour, size in the frame, position (left, right, front row, back row) and pose. Describe a crowd as rows or clusters with counts, sizes and clothing colours (for example a front row of five stickmen in white kurtas and a back row of seven smaller stickmen in coloured shirts and shawls). Never leave secondary figures vague or unspecified and never reduce a group to a single stickman. The surroundings get the same detailed layers.',
-        'WHEN THE SUBJECT IS AN OBJECT, ANIMAL, PLACE OR METAPHOR: draw no stickman. Start the scene by describing the physical item, the close-up action or the top-down view directly: its size, shape, material, texture, colour and shaded side (for animals also fur or skin colour and two or three characteristic details such as round ears, pink nose, long thin tail). Then build the layers around it: ground, mid-ground, background and sky, all described just as concretely. When an object or animal appears next to a stickman, describe it just as fully as the stickman.',
-        'PLACEMENT: say where each important element sits in the frame (left, right, centre, upper, lower, foreground, mid-ground, far background) and roughly how much of the frame it fills.',
-        'ENVIRONMENTS: default to rural Indian settings unless the narration points elsewhere: dry cracked fields, furrowed crop rows, a thatched village hut, trees, bushes, a dirt path, a stone well, distant low hills. Use the same recurring places and objects in the same words throughout the video.',
-        'COLOUR AND LIGHT: muted earth tones as soft colour fills (brown, tan, beige, ochre, olive green, soft pinkish brown for animals, cream and white for clothes), with soft cast shadows and a warm sepia sky. Show mood through posture, composition, sky tone and shadow length.',
-        'Never include readable words, letters, numbers, logos or watermarks in the picture.',
-        'HOW TO USE THE EXAMPLES: the two examples below only show roughly what a finished scene description looks like (its length, its order and its telegraphic, detail-packed wording), one with a stickman as subject and one with an object as subject. They are never the deciding factor. Never copy or reuse their subjects, wording, clothing, colours, counts, layout or setting, and never let them steer what is drawn. Decide every detail only from the narration phrase and the story. Person as subject: "A stickman character with a simple round white head, dot eyes and black stick limbs, wearing a cream kurta with fold lines and a plain grey shawl over one shoulder, sitting cross-legged left of centre, half the frame height, looking down at a cracked clay pot in his hands. Foreground: dry ochre ground with small cracks, five grass tufts, a dozen pebbles of different sizes, soft oval shadow under him. Mid-ground: dirt path curving right, wooden cart wheel leaning on a fence. Background: tall olive tree with thick brown trunk and round canopy on the left, small thatched hut, a thin line of far trees, low hazy hills, pale beige sky." Object as subject: "Close-up of a cracked clay water pot lying on its side in the centre of the frame, filling about half the width, round belly with a jagged crack running from rim to base, rough terracotta texture, a few small clay shards beside it, soft shaded underside. Foreground: dry cracked ochre soil, six grass tufts, scattered pebbles, soft oval cast shadow under the pot. Mid-ground: flat bare field with faint furrow lines running to the horizon. Background: a lone thin tree at the right, low hazy hills, pale beige sky with a warm glow at the horizon, long soft shadows toward the left."',
-    ]),
-}
+def _add(key, name, look, character, environment, colour, ending):
+    STYLES[key] = {
+        'name': name,
+        'open': '',
+        'close': '',
+        'look': look,
+        'rules': J([
+            'THIS VIDEO USES THE ' + name.upper() + ' STYLE described above. Every image follows it exactly.',
+            'PROMPT LENGTH: write one English image prompt of 90 to 120 words for every chunk. The image model reads only about the first 250 small word pieces of a prompt, so put the subject and its look first and keep the rest tight.',
+            'CHARACTER LOOK: ' + character + ' A fixed appearance means age, face, hair, build, clothing, colours and one distinguishing feature. Every recurring character keeps the same appearance, written with the same words every time; tell different characters apart by clothing colour and one distinguishing item. Emotion comes from the eyes, brows, posture and gesture.',
+            'ENVIRONMENTS: ' + environment + ' Use the same recurring places and objects in the same words throughout the video. When the phrase is about an object, an animal, a place, nature, time or an idea, show that directly with no person.',
+            'COLOUR AND LIGHT: ' + colour + ' Show mood through light, sky, shadow length and posture, never by changing the art style.',
+            'ART STYLE IN EVERY PROMPT: because the image model knows nothing else, end every prompt with one short style sentence of about 25 to 35 words, written in your own words from the ART STYLE description above and using its key wording (outlines, textures, palette, lighting), for example: "' + ending + '" Never mention or mix in any other art style, and never ask for photorealism, 3D, glossy digital or flat vector looks. Never include readable words, letters, numbers, captions, logos or watermarks.',
+        ]),
+    }
 
-NIGHT_OPEN = 'An atmospheric 2D digital storybook illustration set at night.'
-NIGHT_CLOSE = 'Deep dark blue nocturnal lighting, warm amber lantern glow casting soft light on surroundings, rich painterly textures, detailed rural environment, cinematic mood, clean 2D composition.'
-STYLES['night'] = {
-    'name': 'Atmospheric Night Storybook',
-    'open': NIGHT_OPEN,
-    'close': NIGHT_CLOSE,
-    'look': 'Atmospheric 2D digital storybook illustration set at night: deep dark blue nocturnal lighting, warm amber lantern glow casting soft light on surroundings, rich painterly textures, detailed rural environment, cinematic mood, clean 2D composition. Best for mystery, nighttime village journeys, suspense, carts, lanterns and stray animals.',
-    'rules': J([
-        'THIS VIDEO USES THE ATMOSPHERIC NIGHT STORYBOOK STYLE: mystery, suspense and nighttime village journeys with carts, lanterns and animals.',
-        'FIXED WRAPPER: the system automatically puts this exact opening sentence before your text and this exact closing sentence after it. Opening: "' + NIGHT_OPEN + '" Closing: "' + NIGHT_CLOSE + '" You write ONLY the scene description that goes between them: never write, repeat, shorten or rewrite any style wording yourself, and never mention any other art style.',
-        'PROMPT LENGTH: no fixed word count. Use as many words as the scene needs to be fully clear, and no more.',
-        'CHARACTERS: when a person is needed, draw a stylized stickman: a smooth round white head, black expressive eyes, black limbs, plus ONE fixed clothing item in a fixed colour (for example a turban, a shawl or a cap). Every recurring character keeps the same head, same clothing item and same colour, written with the same words every time; tell different characters apart by that item and colour. Emotion comes from the eyes, posture and gesture, and from how the lantern light falls on them. Specify the expression and any cart, animal or lantern they interact with.',
-        'EVERY IMAGE IS AT NIGHT: even when the narration speaks of a day moment, show it as a night or deep-twilight scene, never bright daylight. Indoor moments are lit by a lamp or lantern.',
-        'ENVIRONMENTS: detailed rural settings (village lanes, dirt paths, huts, wells, fields, trees, carts, oxen, stray dogs, hanging oil lanterns) unless the narration points elsewhere. When the phrase is about an object, animal, place or idea, frame the nighttime landscape, road or object lit by moonlight or lantern with no stickman.',
-        'COLOUR AND LIGHT: deep dark blue nocturnal tones with warm amber lantern or lamp glow as the main warm light, soft moonlight, rich painterly textures. Show mood through how much lantern light there is, fog, long shadows, distance and darkness, not through a different colour palette.',
-        'Never include readable words, letters, numbers, logos or watermarks. Never ask for photorealism, 3D, anime or flat vector looks.',
-        'EXAMPLES of the scene description you write (the pattern to follow, never to copy). Character and vehicle: "A stylized stickman character with a smooth round white head, black expressive eyes, wearing a turban, driving a wooden bullock cart down a dark village lane." Object or environment: "Two brown oxen harnessed to an empty wooden cart with a glowing hanging oil lantern, standing deserted on a dusty dirt village path."',
-    ]),
-}
 
-GOLD_OPEN = 'A vibrant 2D animated storybook illustration.'
-GOLD_CLOSE = 'Warm golden hour light, soft warm color palette (oranges, earthy tones, muted blues), clean black linework, emotional storytelling aesthetic, detailed background.'
-STYLES['golden'] = {
-    'name': 'Warm Golden Hour Storybook',
-    'open': GOLD_OPEN,
-    'close': GOLD_CLOSE,
-    'look': 'Vibrant 2D animated storybook illustration: warm golden hour light, soft warm colour palette (oranges, earthy tones, muted blues), clean black linework, emotional storytelling aesthetic, detailed background. Best for life lessons, time, emotional reflections and large environmental scenes such as floods, sunset benches and empty rooms.',
-    'rules': J([
-        'THIS VIDEO USES THE WARM GOLDEN HOUR STORYBOOK STYLE: moral storytelling, life lessons, time and emotional reflection, with large environmental scenes.',
-        'FIXED WRAPPER: the system automatically puts this exact opening sentence before your text and this exact closing sentence after it. Opening: "' + GOLD_OPEN + '" Closing: "' + GOLD_CLOSE + '" You write ONLY the scene description that goes between them: never write, repeat, shorten or rewrite any style wording yourself, and never mention any other art style.',
-        'PROMPT LENGTH: no fixed word count. Use as many words as the scene needs to be fully clear, and no more.',
-        'CHARACTERS: when a person is needed, draw a stylized stick character: a smooth white circle head, dot eyes, a fixed hair description (for example short black hair), thin black stick limbs, plus ONE fixed clothing item in a fixed colour (for example a simple blue shirt). Every recurring character keeps the same head, hair, clothing and colour, written with the same words every time; tell different characters apart by hair and clothing colour. Define the emotional pose (sitting, standing, reflecting, looking away) so posture and gesture carry the feeling.',
-        'ENVIRONMENTS AND ABSTRACT SCENES: when the phrase is about nature, weather, a disaster, time, a place or an idea, focus purely on the landscape, weather event or empty interior with no character; wide cinematic shots work well. Backgrounds are detailed, with a clear foreground, middle ground and background.',
-        'COLOUR AND LIGHT: warm golden hour light on a soft palette of oranges, earthy tones and muted blues, with clean black linework. Show mood through how the warm light behaves: glowing and full for hope or joy, a thin line of orange against muted blues for sadness or loneliness, stormy clouds with a warm edge of light for tension or loss. Never dull or lifeless.',
-        'Never include readable words, letters, numbers, logos or watermarks. Never ask for photorealism, 3D or anime looks.',
-        'EXAMPLES of the scene description you write (the pattern to follow, never to copy). Character: "A stylized character with a smooth white circle head, short black hair, dot eyes, black stick limbs, wearing a simple blue shirt, sitting alone on a wooden bench looking at a mountain riverbank." Environment or disaster: "Wide cinematic shot of a raging muddy river flood submerging a village near mountains during a stormy day, debris floating in water, dramatic thunder clouds overhead."',
-    ]),
-}
+_add(
+    'indian_storybook',
+    'Polished Indian Storybook Anime',
+    'Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks.',
+    'Draw expressive simple characters with anime-inspired cartoon faces, bold clean dark outlines and soft cel-shading, in simple Indian clothing with believable folds (kurta, saree, dhoti, shawl; a turban only when the story needs it), with consistent proportions.',
+    'Make the environments richly detailed rural Indian settings (village lanes, fields, mud huts, wells, temples, markets, tea stalls) unless the narration points elsewhere, with a layered foreground, middle ground and background.',
+    'Warm earthy colour palette with soft cel-shading, subtle hand-painted textures and beautiful cinematic lighting.',
+    'Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon look, bold clean dark outlines, soft cel-shading, warm earthy palette, subtle hand-painted texture, beautiful cinematic lighting.',
+)
+
+_add(
+    'sketchbook_doodle',
+    'Sketchbook Doodle Storybook',
+    'Hand-drawn 2D storybook illustration in a charming sketchbook-doodle style, simple expressive stick-figure characters with bold irregular black ink outlines, detailed natural environments, loose hand-drawn linework, watercolor and colored-pencil textures, subtle paper grain, warm earthy tones, golden-hour cinematic lighting, soft atmospheric shading, highly detailed backgrounds, consistent character design, no text, logos, or watermarks.',
+    'Draw simple expressive stick-figure characters: a round head with a simple expressive face, thin stick limbs and bold irregular black ink outlines, plus ONE fixed clothing item in a fixed colour.',
+    'Make the environments detailed natural settings (fields, forests, rivers, hills, village paths, huts, trees) with loose hand-drawn linework and highly detailed backgrounds, unless the narration points elsewhere.',
+    'Warm earthy tones with watercolor and colored-pencil textures, subtle paper grain, golden-hour cinematic lighting and soft atmospheric shading.',
+    'Hand-drawn sketchbook-doodle storybook illustration, loose irregular black ink outlines, watercolor and colored-pencil textures, subtle paper grain, warm earthy tones, golden-hour cinematic light.',
+)
+
+_add(
+    'whimsical_indian',
+    'Whimsical Indian Cartoon',
+    'Whimsical 2D hand-drawn Indian cartoon illustration, cute simple rounded characters with expressive faces and bold black sketch outlines, clean ink linework, soft watercolor and colored-pencil textures, warm earthy pastel colors, richly detailed everyday Indian settings, charming storybook aesthetic, subtle paper grain, soft natural lighting, balanced cinematic composition, consistent character proportions, no captions, text, logos, or watermarks.',
+    'Draw cute, simple, rounded characters with expressive faces, bold black sketch outlines and clean ink linework, in everyday Indian clothing.',
+    'Make the environments richly detailed everyday Indian settings (homes, courtyards, streets, markets, tea stalls, schools, railway stations, rooftops) unless the narration points elsewhere, with balanced cinematic composition.',
+    'Warm earthy pastel colours with soft watercolor and colored-pencil textures, subtle paper grain and soft natural lighting.',
+    'Whimsical 2D hand-drawn Indian cartoon, cute rounded characters, bold black sketch outlines, soft watercolor and colored-pencil texture, warm earthy pastels, subtle paper grain, soft natural light.',
+)
+
+_add(
+    'editorial_pencil',
+    'Editorial Pencil and Watercolor Storybook',
+    '2D hand-drawn editorial storybook illustration, expressive cartoon characters with slightly anime-inspired faces, delicate imperfect pencil-and-ink outlines, sketchy cross-hatching, soft watercolor and colored-pencil shading, muted warm beige and earthy pastel palette, detailed realistic backgrounds with architectural perspective, subtle paper texture, soft diffused lighting, emotional storytelling atmosphere, consistent character proportions, clean cinematic composition, no logos or watermarks.',
+    'Draw expressive cartoon characters with slightly anime-inspired faces and delicate imperfect pencil-and-ink outlines, with sketchy cross-hatching and soft watercolor shading, in believable Indian clothing.',
+    'Make the backgrounds detailed and realistic with clear architectural perspective (old buildings, streets, rooms, courtyards, stations, markets) in believable Indian settings unless the narration points elsewhere.',
+    'Muted warm beige and earthy pastel palette, soft diffused lighting, subtle paper texture and an emotional storytelling atmosphere.',
+    '2D hand-drawn editorial storybook illustration, delicate imperfect pencil-and-ink outlines, sketchy cross-hatching, soft watercolor shading, muted beige and earthy pastels, subtle paper texture, soft diffused light.',
+)
+
+_add(
+    'stickman_sepia',
+    'Indian Sepia Stickman Cartoon',
+    '2D hand-drawn stickman cartoon illustration, minimalist round-headed characters with simple expressive faces and thin black stick limbs, bold clean black ink outlines, detailed sketch-style Indian environments, intricate pencil linework, subtle cross-hatching, soft watercolor and colored-pencil textures, muted beige, sepia and earthy tones with selective bright character accents, warm cinematic daylight, slightly grainy paper texture, detailed crowded backgrounds, consistent stickman character design, no text, logos or watermarks.',
+    'Draw minimalist round-headed stickman characters: a round head with a simple expressive face, thin black stick limbs and bold clean black ink outlines, plus one or two clothing details in a bright accent colour that stands out against the muted scene.',
+    'Make the environments detailed sketch-style Indian settings with intricate pencil linework and detailed crowded backgrounds (streets, markets, villages, fairs, stations) unless the narration points elsewhere.',
+    'Muted beige, sepia and earthy tones with selective bright accents on the characters, warm cinematic daylight and a slightly grainy paper texture.',
+    '2D hand-drawn stickman cartoon, round-headed characters with thin black limbs, bold ink outlines, pencil cross-hatching, watercolor texture, muted sepia and earthy tones with bright character accents, grainy paper.',
+)
+
+_add(
+    'village_storybook',
+    'Charming Indian Village Storybook',
+    'Charming 2D hand-drawn Indian village storybook illustration, cute cartoon characters with rounded faces and expressive features, slightly childlike proportions, clean bold black ink outlines, detailed pencil-sketch linework, soft watercolor and colored-pencil textures, warm muted beige and earthy pastel palette, traditional Indian rural architecture and surroundings, subtle paper grain, gentle natural sunlight, beautifully detailed backgrounds, consistent character design, cinematic storytelling composition, no text, logos, or watermarks.',
+    'Draw cute cartoon characters with rounded faces, expressive features, slightly childlike proportions and clean bold black ink outlines, in simple Indian village clothing.',
+    'Make the environments traditional Indian rural settings and architecture (mud and brick houses, thatched roofs, courtyards, wells, farm fields, village lanes, banyan trees) unless the narration points elsewhere, with beautifully detailed backgrounds.',
+    'Warm muted beige and earthy pastel palette with detailed pencil-sketch linework, subtle paper grain and gentle natural sunlight.',
+    'Charming 2D hand-drawn Indian village storybook illustration, rounded childlike characters, bold black ink outlines, pencil-sketch linework, watercolor texture, muted beige earthy pastels, gentle sunlight, paper grain.',
+)
 
 
 def get_style(key=None):
-    """Returns (key, style). Unknown or empty keys fall back to painterly, exactly like the n8n node."""
-    k = key if key in STYLES else 'painterly'
+    """Returns (key, style). An empty, unknown or 'random' key picks one of the styles at random.
+    Callers resolve the key once and pass the resolved key on, so one video always keeps one style."""
+    k = key if key in STYLES else random.choice(sorted(STYLES))
     return k, STYLES[k]

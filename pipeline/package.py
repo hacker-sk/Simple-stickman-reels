@@ -6,7 +6,8 @@ The package carries everything the renderer needs, so no topic, script or image-
   "title": "...", "description": "...", "mood": "emotional",          (mood: motivational|emotional|neutral; the older inspiring|mysterious|dramatic|upbeat|calm still work)
   "hashtags": ["..."], "tags": ["..."],                              (optional, same handling as the script step)
   "hook": "opening line shown above the picture"  or  {"line": "...", "focus": "..."},   (optional, default = script opening)
-  "art_style": "painterly|sepia|night|golden",                       (optional, default = the art_style input)
+  "art_style": "indian_storybook|sketchbook_doodle|whimsical_indian|editorial_pencil|stickman_sepia|village_storybook",
+                                                                     (optional, default = the art_style input; when that is empty or random too, one of these is picked at random)
   "scenes": [{"narration": "Hindi in Devanagari", "image_prompt": "English prompt used as written"}, ...]
 }
 
