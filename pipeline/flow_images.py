@@ -136,7 +136,9 @@ def load_scenes(raw):
 
 
 def make_voice_file(narration, path):
-    """The renderer's own make_voice (Gemini, then ElevenLabs, then Fish). Returns (duration in seconds, the render_hindi module)."""
+    """The renderer's own make_voice (Gemini, then ElevenLabs, then Fish). Returns (duration in seconds, the render_hindi module).
+    The voice is made natively by render_hindi.py from the VOICE payload of pipeline/run_shorts.py (voice description + delivery
+    style): nothing is patched in."""
     work = os.path.abspath('flow_work')
     os.makedirs(work, exist_ok=True)
     os.environ['WORK_DIR'] = work
@@ -144,20 +146,15 @@ def make_voice_file(narration, path):
     try:
         from pipeline.run_shorts import VOICE
     except Exception:  # noqa
+        # no description or style here on purpose: render_hindi.py then uses its own native defaults (the same deep, warm baritone)
         VOICE = {'language': 'hi', 'gemini_voice': 'designed',
-                 'gemini_style': 'crisp, punchy, confident, high energy; slightly faster than normal pace, easing to normal speed on key and emotional lines, never fast throughout',
                  'gemini_models': ['gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts'],
                  'voice_id': 'ibbx9zDYGvLgtYzRbqqG', 'fish_voice_id': '6366ea69a97d41ada9eb855a64e56fba', 'fish_model': 's2.1-pro-free'}
-    os.environ['PAYLOAD'] = json.dumps(VOICE)
+    os.environ['PAYLOAD'] = json.dumps(VOICE, ensure_ascii=False)
     stub = types.ModuleType('render_hindi_overlay')   # the overlay module is only needed for drawing, not for the voice
     stub.STATE = {}
     sys.modules.setdefault('render_hindi_overlay', stub)
     import render_hindi as rh
-    try:
-        import voice_polish   # bright fast voice style, short pauses (same patch the renderer gets from run_hindi.py)
-        voice_polish.install(rh)
-    except Exception as e:  # noqa
-        log('voice polish not installed, the plain voice is used: ' + str(e)[:150])
     rh.make_voice(narration, path)
     dur = rh.audio_duration(path)
     if dur > rh.MAX_VOICE_SECONDS:
