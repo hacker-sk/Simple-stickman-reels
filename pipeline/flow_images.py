@@ -4,7 +4,9 @@
 prepare : package JSON -> flow-batch/prompts/shorts_flow.json (prompts with an extra 'Image name: ...' line)
           + flow-batch/prompts/shorts_flow_meta.json (scene index -> short name). Sets the step output flow=true.
 match   : (used by render_hindi_flow.py) scenes + Flow images folder -> {scene index: image path}.
-          1) descriptive filename vs the scene's short name, 2) Gemini vision for what is left, 3) elimination.
+          1) descriptive filename vs the scene's short name,
+          2) Gemini 3.1 vision, ONE request per image (every one of the API keys is tried on any failure),
+          3) elimination.
           Scenes without a confident match are left out, so the normal providers make those images.
 Everything here is best effort: any problem means fewer (or no) Flow images, never a failed video.
 """
@@ -16,6 +18,7 @@ import json
 import os
 import re
 import sys
+import time
 from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -26,10 +29,12 @@ from pipeline import gemini  # noqa: E402
 
 IMG_EXT = ('.png', '.jpg', '.jpeg', '.webp')
 META_NAME = 'shorts_flow_meta.json'
-NAME_MODELS = ['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash']
-VISION_MODELS = ['gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-2.5-flash-lite']
+NAME_MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.5-flash']
+VISION_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.1-flash', 'gemini-3.1-pro']
 MIN_SCORE = 0.6
 MIN_MARGIN = 0.1
+VISION_MIN = 6      # of 10: minimum vision score to accept a scene/image pair
+MIN_BYTES = 3000
 
 
 def log(*a):
@@ -129,17 +134,32 @@ def score(a, b):
     return max(jac, 0.85 * cont, 0.9 * seq)
 
 
-def find_images(flow_dir):
+def _scan(flow_dir, skip):
     out = []
     for dp, dn, fn in os.walk(flow_dir):
         parts = dp.replace('\\', '/').split('/')
-        if 'rejected' in parts or 'debug' in parts or 'raw' in parts:
+        if any(s in parts for s in skip):
             continue
         for f in sorted(fn):
             p = os.path.join(dp, f)
-            if f.lower().endswith(IMG_EXT) and os.path.getsize(p) >= 10000:
-                out.append({'name': f, 'path': os.path.abspath(p), 'slug': slug(f)})
+            if f.lower().endswith(IMG_EXT) and os.path.getsize(p) >= MIN_BYTES:
+                out.append({'name': f, 'path': os.path.abspath(p), 'slug': slug(f), 'mtime': os.path.getmtime(p)})
     return out
+
+
+def find_images(flow_dir):
+    out = _scan(flow_dir, ('rejected', 'debug', 'raw'))
+    if not out:  # the images may sit in a folder we normally skip
+        out = _scan(flow_dir, ('rejected', 'debug'))
+        if out:
+            log('no images outside raw/, using the raw folder images')
+    # keep one entry per file name
+    seen, uniq = set(), []
+    for im in out:
+        if im['name'] not in seen:
+            seen.add(im['name'])
+            uniq.append(im)
+    return uniq
 
 
 def find_meta(flow_dir):
@@ -156,54 +176,60 @@ def find_meta(flow_dir):
 def thumb_b64(path):
     from PIL import Image
     im = Image.open(path).convert('RGB')
-    im.thumbnail((512, 512))
+    im.thumbnail((768, 768))
     buf = io.BytesIO()
-    im.save(buf, 'JPEG', quality=70)
+    im.save(buf, 'JPEG', quality=75)
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def vision_match(scene_rows, images):
-    """Ask Gemini which image fits which scene. Returns {scene index: filename} (unvalidated)."""
+def vision_scores(image, scene_rows, start_key=0):
+    """Ask Gemini 3.1 how well ONE image fits each candidate scene. Returns {scene index: score 0-10}.
+    For every model, every API key is tried (rotating on ANY failure). Raises only when all keys failed on all models."""
     import requests
     lines = []
     for i, narr, name, prompt in scene_rows:
         lines.append('scene ' + str(i) + ': narration (Hindi): ' + narr[:300].replace('\n', ' ') +
                      ' | intended image: ' + (name or 'unknown') + ' | prompt: ' + prompt[:250].replace('\n', ' '))
-    text = ('You match generated images to the scenes of a short video. Scenes:\n' + '\n'.join(lines) +
-            '\n\nThe images follow, each preceded by its file name. For every scene choose the ONE image that best shows it, '
-            'using each image at most once. Use null for a scene when no image clearly fits. Reply ONLY with JSON: '
-            '{"matches": {"<scene number>": "<file name or null>"}}')
-    parts = [{'text': text}]
-    for img in images:
-        parts.append({'text': 'IMAGE FILE: ' + img['name']})
-        parts.append({'inline_data': {'mime_type': 'image/jpeg', 'data': thumb_b64(img['path'])}})
-    body = {'contents': [{'role': 'user', 'parts': parts}],
-            'generationConfig': {'maxOutputTokens': 2000, 'temperature': 0.1, 'responseMimeType': 'application/json'}}
+    text = ('You are matching ONE generated image to the scenes of a short video. Candidate scenes:\n' + '\n'.join(lines) +
+            '\n\nLook at the image (file name: ' + image['name'] + ') and rate from 0 to 10 how well it shows EACH scene '
+            '(10 = clearly this scene, 0 = unrelated). Reply ONLY with JSON: {"scores": {"<scene number>": <0-10>}} '
+            'with every scene number listed above.')
+    body = {'contents': [{'role': 'user', 'parts': [
+        {'text': text},
+        {'inline_data': {'mime_type': 'image/jpeg', 'data': thumb_b64(image['path'])}}]}],
+        'generationConfig': {'maxOutputTokens': 1500, 'temperature': 0.1, 'responseMimeType': 'application/json'}}
     keys = gemini.api_keys()
-    ki = 0
     last = ''
-    for model in VISION_MODELS:
-        for _ in range(len(keys) + 1):
-            try:
-                r = requests.post('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent',
-                                  headers={'x-goog-api-key': keys[ki % len(keys)], 'Content-Type': 'application/json'},
-                                  data=json.dumps(body), timeout=180)
-                if r.status_code == 200:
-                    got = gemini.extract_json(gemini.response_text(r.json()))
-                    m = (got or {}).get('matches')
-                    if isinstance(m, dict):
-                        return m
-                    last = 'unparseable reply'
-                    break
-                last = 'HTTP ' + str(r.status_code) + ': ' + r.text[:120]
-            except Exception as e:  # noqa
-                last = str(e)[:120]
-            log('vision ' + model + ' failed: ' + last)
-            if '429' in last or 'quota' in last.lower():
-                ki += 1
-                continue
-            break
-    raise RuntimeError('Gemini vision failed: ' + last)
+    for sweep in range(2):  # second sweep catches short-lived overload/rate limits
+        for model in VISION_MODELS:
+            for k in range(len(keys)):
+                key = keys[(start_key + k) % len(keys)]
+                try:
+                    r = requests.post('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent',
+                                      headers={'x-goog-api-key': key, 'Content-Type': 'application/json'},
+                                      data=json.dumps(body), timeout=120)
+                    if r.status_code == 200:
+                        got = gemini.extract_json(gemini.response_text(r.json()))
+                        sc = (got or {}).get('scores')
+                        if isinstance(sc, dict) and sc:
+                            out = {}
+                            for kk, v in sc.items():
+                                try:
+                                    out[int(kk)] = float(v)
+                                except Exception:  # noqa
+                                    pass
+                            if out:
+                                return out
+                        last = 'unparseable reply'
+                    else:
+                        last = 'HTTP ' + str(r.status_code) + ': ' + r.text[:100].replace('\n', ' ')
+                except Exception as e:  # noqa
+                    last = str(e)[:100]
+                log('vision ' + model + ' key#' + str((start_key + k) % len(keys) + 1) + ' failed for ' + image['name'] + ': ' + last)
+                time.sleep(0.5)
+        if sweep == 0:
+            time.sleep(5)
+    raise RuntimeError('all keys/models failed: ' + last)
 
 
 def build_map(scenes, flow_dir, work_dir=None):
@@ -225,6 +251,8 @@ def build_map(scenes, flow_dir, work_dir=None):
                 names[i] = clean_name(m.get('name') or '')
     elif meta:
         log('scene count differs from the Flow meta, ignoring the short names')
+    elif not meta:
+        log('no Flow meta file found, filename matching is skipped; Gemini vision decides')
     assigned = {}
     method = {}
     used = set()
@@ -253,32 +281,36 @@ def build_map(scenes, flow_dir, work_dir=None):
             assigned[i] = f
             used.add(f)
             method[i] = 'filename'
+    log('filename step matched ' + str(len(assigned)) + ' scene(s)')
 
-    # 2) Gemini vision for the leftovers
+    # 2) Gemini 3.1 vision, one request per remaining image, all keys tried on failure
     left_s = sorted(i for i in submitted if i not in assigned)
     left_i = [im for im in images if im['name'] not in used]
-    gemini_ok = False
+    vision_failed = 0
     if left_s and left_i:
-        try:
-            rows = [(i, str(scenes[i].get('narration') or ''), names.get(i, ''), str(scenes[i].get('image_prompt') or '')) for i in left_s]
-            got = vision_match(rows, left_i)
-            gemini_ok = True
-            for k, f in got.items():
-                try:
-                    i = int(k)
-                except Exception:  # noqa
-                    continue
-                if i in left_s and i not in assigned and f in by_name and f not in used and by_name[f] in left_i:
-                    assigned[i] = f
-                    used.add(f)
-                    method[i] = 'gemini'
-        except Exception as e:  # noqa
-            log('vision matching skipped: ' + str(e)[:200])
+        rows = [(i, str(scenes[i].get('narration') or ''), names.get(i, ''), str(scenes[i].get('image_prompt') or '')) for i in left_s]
+        cand = []  # (score, scene, image name)
+        for n, im in enumerate(left_i):
+            try:
+                sc = vision_scores(im, rows, start_key=n)
+                log('vision scores for ' + im['name'] + ': ' + ', '.join(str(i + 1) + '=' + str(int(v)) for i, v in sorted(sc.items())))
+                for i, v in sc.items():
+                    if i in left_s:
+                        cand.append((v, i, im['name']))
+            except Exception as e:  # noqa
+                vision_failed += 1
+                log('vision failed for ' + im['name'] + ': ' + str(e)[:150])
+        for v, i, f in sorted(cand, key=lambda x: -x[0]):
+            if v < VISION_MIN or i in assigned or f in used:
+                continue
+            assigned[i] = f
+            used.add(f)
+            method[i] = 'gemini'
 
-    # 3) elimination: one scene and one image left, and every scene produced an image
+    # 3) elimination: one scene and one image left, vision found nothing for it, and every scene produced an image
     left_s = [i for i in sorted(submitted) if i not in assigned]
     left_i = [im for im in images if im['name'] not in used]
-    if not gemini_ok and len(left_s) == 1 and len(left_i) == 1 and len(images) == len(submitted):
+    if len(left_s) == 1 and len(left_i) == 1 and len(images) == len(submitted):
         assigned[left_s[0]] = left_i[0]['name']
         method[left_s[0]] = 'elimination'
 
