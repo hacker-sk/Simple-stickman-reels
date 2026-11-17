@@ -70,3 +70,7 @@ function createMediaTracker(prompts, debugDir) {
 }
 
 module.exports = { createMediaTracker };
+
+// Human-like clicks + a fresh Library every run (see human.js, fresh_library.js).
+// Hooked here because run_flow.js requires this module at start-up, before the browser launches.
+try { require("./human").install(); } catch (e) { console.log("Human layer not loaded:", String(e && e.message).slice(0, 120)); }
