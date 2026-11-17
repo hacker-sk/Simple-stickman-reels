@@ -13,6 +13,10 @@ Inputs (environment, set by .github/workflows/shorts.yml):
                         stickman_sepia | village_storybook
   IMAGE_PROVIDER_ORDER  optional, copied to HINDI_IMAGE_ORDER for the renderer
   MUSIC_VOLUME          optional, level of the background song (default 0.14, see music_picker.py)
+
+Voice: the VOICE payload below is what Gemini TTS gets, in BOTH places where the voiceover is made (the prepare job through
+pipeline/flow_images.py, and the make job through the render job file). gemini_voice_name + gemini_voice_desc describe the
+designed voice, gemini_style is the delivery style. render_hindi.py generates the narration natively from them.
 """
 import json
 import os
@@ -32,7 +36,11 @@ RENDERER = os.environ.get('RENDER_SCRIPT', os.path.join(ROOT, 'render_hindi.py')
 RENDER_TIMEOUT = 80 * 60
 VOICE = {
     'language': 'hi', 'gemini_voice': 'designed',
-    'gemini_style': 'A bright, clear, confident young Indian male reel narrator speaking fluent Hindi, with a full, warm, forward voice, strong vocal projection, crisp consonants and an engaging, high-energy storytelling tone. Fast, punchy, flowing pace, about 1.25 times faster than a relaxed reading, with short natural breaths and no long pauses (gaps between sentences under half a second). Keep the emotion in the tone and pitch variation, never by slowing down or stretching words. Never slow, sleepy, dull, muffled, soft or husky.',
+    # the voice Gemini designs (created once per API key, looked up by this name afterwards)
+    'gemini_voice_name': 'Deep warm Hindi baritone narrator v2',
+    'gemini_voice_desc': 'Deep, warm Indian male baritone with crisp, clear Devanagari pronunciation. Rich chest resonance, close-mic intimacy, and high studio loudness.',
+    # how it delivers every line
+    'gemini_style': 'Expressive, emotionally gripping storytelling at a steady, engaging pace. Read continuous, unpunctuated Devanagari text smoothly, with only brief, natural micro-pauses between complete thoughts. No long or frequent pauses. Stress key emotions and impactful words with stronger projection, chest weight, and dynamic pitch shifts, without slowing down or dragging.',
     'gemini_models': ['gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts'],
     'voice_id': 'ibbx9zDYGvLgtYzRbqqG', 'tts_model': 'eleven_multilingual_v2',
     'fish_voice_id': '6366ea69a97d41ada9eb855a64e56fba', 'fish_model': 's2.1-pro-free',
