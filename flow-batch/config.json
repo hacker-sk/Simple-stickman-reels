@@ -1,7 +1,7 @@
 {
   "flowUrl": "https://labs.google/fx/tools/flow",
   "extensionPage": "sidepanel/sidepanel.html",
-  "timeoutMinutes": 90,
+  "timeoutMinutes": 10,
   "settleSeconds": 45,
   "retryFailedPasses": 1,
   "abortOnSettingsMismatch": true,
