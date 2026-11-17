@@ -10,9 +10,10 @@ If a mood has no songs at all, any song that is named with one of the three mood
 the old behaviour applies (any file in the folder), so a video never loses its music.
 
 run_hindi.py installs this picker into render_hindi.py. render_hindi.py itself is unchanged.
-The same install also swaps in a quieter music mix (mix_audio below): the voice is levelled first, the song is a low
-bed under it and ducks while the voice speaks. Tune the song level with the MUSIC_VOLUME environment variable
-(default 0.14; the old fixed value was 0.30, which was too loud).
+The same install also swaps in a quieter music mix (mix_audio below). Songs are mastered at very different loudness, so a fixed
+volume factor was never reliable: now the song is first levelled to a fixed loudness (MUSIC_LUFS, default -27 LUFS, the voice is
+levelled to -15 LUFS), then it ducks further under the voice. Make the song louder or quieter with the MUSIC_LUFS environment
+variable (for example -24 louder, -30 quieter).
 """
 import os
 import random
@@ -20,7 +21,7 @@ import subprocess
 
 MOODS = ('motivational', 'emotional', 'neutral')
 AUDIO_EXT = ('.mp3', '.wav', '.m4a', '.ogg')
-DEFAULT_MUSIC_VOLUME = 0.14
+DEFAULT_MUSIC_LUFS = -27.0
 
 # the payload may still carry an older mood word; map each one to one of the three moods
 ALIASES = {
@@ -48,12 +49,12 @@ def pool_for(files, mood):
     return named or files
 
 
-def music_volume():
+def music_lufs():
     try:
-        v = float(os.environ.get('MUSIC_VOLUME', '').strip() or DEFAULT_MUSIC_VOLUME)
+        v = float(os.environ.get('MUSIC_LUFS', '').strip() or DEFAULT_MUSIC_LUFS)
     except ValueError:
-        v = DEFAULT_MUSIC_VOLUME
-    return min(1.0, max(0.0, v))
+        v = DEFAULT_MUSIC_LUFS
+    return min(-14.0, max(-45.0, v))
 
 
 def install(rh):
@@ -80,14 +81,15 @@ def install(rh):
     def mix_audio(voice, music, total, out):
         fade_out_start = max(0.0, total - 2.0)
         if music:
-            vol = music_volume()
-            rh.log('mix: voice levelled to -15 LUFS, song at volume ' + format(vol, '.2f') + ', ducked under the voice')
+            lufs = music_lufs()
+            rh.log('mix: voice levelled to -15 LUFS, song levelled to ' + format(lufs, '.0f') + ' LUFS, ducked further under the voice')
             fc = (
                 f"[0:a]apad=pad_dur=3,atrim=0:{total:.3f},asetpts=N/SR/TB,"
                 f"loudnorm=I=-15:TP=-1.5:LRA=7,aresample=44100,asplit=2[v1][v2];"
-                f"[1:a]volume={vol:.3f},atrim=0:{total:.3f},asetpts=N/SR/TB,"
+                f"[1:a]atrim=0:{total:.3f},asetpts=N/SR/TB,"
+                f"loudnorm=I={lufs:.1f}:TP=-6:LRA=7,aresample=44100,"
                 f"afade=t=in:st=0:d=1,afade=t=out:st={fade_out_start:.3f}:d=2[m];"
-                f"[m][v1]sidechaincompress=threshold=0.02:ratio=12:attack=10:release=400:makeup=1[duck];"
+                f"[m][v1]sidechaincompress=threshold=0.05:ratio=4:attack=10:release=400:makeup=1[duck];"
                 f"[v2][duck]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.95[a]"
             )
             cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", voice, "-stream_loop", "-1", "-i", music,
