@@ -1,48 +1,116 @@
 {
-  "title": "ईश्वर ने ऐसा क्यों किया? 🙏",
-  "description": "ईश्वर की बनाई हर चीज़ के पीछे एक गहरा कारण है। अनाज के कीड़ों से लेकर खून के लाल रंग तक, ये बातें दिल छू लेंगी। 🙏\n\n#shorts #hindi #life #motivation #humanity",
+  "title": "ईश्वर ने ऐसा क्यों बनाया?",
+  "description": "अनाज में कीड़े, मृत्यु के बाद दुर्गंध, भविष्य का पर्दा और सबके खून का एक रंग। ईश्वर की चार रचनाओं के पीछे छिपा गहरा संदेश।",
   "mood": "emotional",
-  "hook": "ईश्वर ने ऐसा क्यों किया?",
+  "hashtags": ["#Shorts", "#ईश्वर", "#इंसानियत", "#जीवन"],
   "scenes": [
     {
-      "narration": "ईश्वर ने अनाज में कीड़े इसलिए बनाए ताकि इंसान उसे सोने-चांदी की तरह जमा करके ना रख सके",
-      "image_prompt": "Inside an old Indian village grain store: a heap of wheat full of tiny worms and moths, spoiled grain spilling from a clay pot, next to a pile of shiny gold and silver coins that looks cold and useless, and an elderly Indian village farmer with a white mustache, orange turban and simple white kurta dhoti looking at it thoughtfully. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Vertical portrait composition, no text, no letters, no captions, no watermark."
+      "narration": "ईश्वर ने अनाज में कीड़े",
+      "image_prompt": "Wide shot of a rural Indian village grain store, a heap of golden wheat with tiny weevils crawling in it, Ramu, an elderly Indian farmer with a saffron turban, white kurta and dhoti, grey moustache and kind eyes, bending down to look closely at the grain. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
     },
     {
-      "narration": "और भूखे लोगों तक अनाज पहुंचता रहे।",
-      "image_prompt": "The elderly Indian village farmer with a white mustache, orange turban and simple white kurta dhoti happily handing sacks of fresh grain to a line of thin hungry villagers, women and children with grateful faces, in a sunny village square with mud houses. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Vertical portrait composition, no text, no letters, no captions, no watermark."
+      "narration": "इसलिए बनाए ताकि इंसान",
+      "image_prompt": "Close-up of Ramu, an elderly Indian farmer with a saffron turban, white kurta and dhoti, grey moustache and kind eyes, holding a few wheat grains in his palm with a tiny weevil on them, a soft golden divine light falling from the sky over the village behind him. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
     },
     {
-      "narration": "ईश्वर ने मृत्यु के बाद शरीर में दुर्गंध इसलिए रखी ताकि इंसान अपने प्रियजनों को विदा करना सीखे",
-      "image_prompt": "A quiet riverside at dusk in rural India: a family in white clothes, with a young Indian woman in a red saree with a long black braid and a small boy in a yellow shirt, standing with folded hands and tearful respectful faces beside a flower-garlanded cloth-covered stretcher, marigold petals, gentle sadness, peaceful and dignified. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Vertical portrait composition, no text, no letters, no captions, no watermark."
+      "narration": "उसे सोने-चांदी की तरह",
+      "image_prompt": "A greedy round-bellied merchant in a maroon vest and round red turban hoarding sacks of grain next to chests full of glittering gold and silver coins in a dim locked storeroom, his eyes shining with greed. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "जमा करके ना रख सके",
+      "image_prompt": "The round-bellied merchant in a maroon vest and round red turban stares in dismay at his piled-up grain sacks, weevils crawling all over the spoiled grain and spilling out, the gold coins untouched beside them. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "और भूखे लोगों तक",
+      "image_prompt": "Hungry Indian village children and thin women holding empty metal bowls walking along a dusty village road toward a grain store at golden hour, hopeful tired faces, Ramu, an elderly farmer with a saffron turban and white kurta, waving them closer. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "अनाज पहुंचता रहे।",
+      "image_prompt": "Ramu, an elderly Indian farmer with a saffron turban, white kurta and dhoti, grey moustache and kind eyes, handing sacks of golden grain to smiling village families, children cheering, warm sharing and gratitude in the village square. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "ईश्वर ने मृत्यु के बाद",
+      "image_prompt": "A peaceful, gentle scene in a village courtyard: an elderly grandfather lying still, covered with a white cloth and marigold garlands, soft morning light, Meera, a woman in a green sari with a long black braid, and her ten-year-old son Arjun in a yellow shirt sitting quietly beside him. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "शरीर में दुर्गंध इसलिए रखी",
+      "image_prompt": "Village relatives standing a little apart in the courtyard, covering their noses with the ends of their cloth, thin curls of incense smoke rising, time passing shown by long shadows, sorrowful and quiet mood, nothing graphic. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "ताकि इंसान अपने प्रियजनों को",
+      "image_prompt": "Meera, a woman in a green sari with a long black braid, and her ten-year-old son Arjun in a yellow shirt holding hands, tears in their eyes, looking lovingly at the covered figure of the grandfather with marigolds, soft golden light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "विदा करना सीखे",
+      "image_prompt": "A family with folded hands bidding farewell at a quiet riverside ghat at dusk, Meera in a green sari and Arjun in a yellow shirt among them, marigold petals floating on the river, a glowing orange sky, reverent and calm. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
     },
     {
       "narration": "और जीवन आगे बढ़ सके।",
-      "image_prompt": "The young Indian woman in a red saree with a long black braid and the small boy in a yellow shirt walking away hand in hand along a village path at sunrise, golden light, looking forward with quiet hope, green fields around them. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Vertical portrait composition, no text, no letters, no captions, no watermark."
+      "image_prompt": "Sunrise over the village, Meera in a green sari and her son Arjun in a yellow shirt planting a small green sapling together beside their house, hopeful smiles, life moving forward, rooster and farmland in the background. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
     },
     {
-      "narration": "ईश्वर ने भविष्य को पर्दे में इसलिए रखा",
-      "image_prompt": "The elderly Indian village farmer with a white mustache, orange turban and simple white kurta dhoti standing at the edge of a village path that disappears into a thick glowing veil of mist and a hanging translucent curtain, mysterious golden light behind the veil, he looks toward it with wonder. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Vertical portrait composition, no text, no letters, no captions, no watermark."
+      "narration": "ईश्वर ने भविष्य को पर्दे में",
+      "image_prompt": "A glowing translucent golden curtain hanging across a village dirt road at dawn, hiding the path beyond it in soft mist, Ramu, an elderly farmer with a saffron turban and white kurta, standing before it with a curious look. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
     },
     {
-      "narration": "ताकि इंसान अपनी मृत्यु का दिन जानकर आज की खुशियां जीना ना भूल जाए।",
-      "image_prompt": "A joyful moment today: the elderly Indian village farmer with a white mustache, orange turban and simple white kurta dhoti sharing a meal on the floor with the young Indian woman in a red saree with a long black braid and the small boy in a yellow shirt, laughing together, warm lamp light, a bright cheerful village home. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Vertical portrait composition, no text, no letters, no captions, no watermark."
+      "narration": "इसलिए रखा ताकि इंसान",
+      "image_prompt": "A young Indian man in a blue shirt standing at the edge of a mist-covered village path, uncertain but curious, looking ahead into the fog with a lantern in his hand, soft dawn light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
     },
     {
-      "narration": "ईश्वर ने हर इंसान के खून का रंग लाल इसलिए रखा",
-      "image_prompt": "Close up of many different hands with different skin tones, wearing different bangles, threads and rings, clasped together in the center, with warm red light glowing between them like one shared heartbeat, symbolizing that all human blood is red, soft cinematic lighting. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, beautiful cinematic lighting, consistent character designs and proportions. Vertical portrait composition, no text, no letters, no captions, no watermark."
+      "narration": "अपनी मृत्यु का दिन जानकर",
+      "image_prompt": "The young Indian man in a blue shirt sitting alone and anxious under a banyan tree, staring at a large hourglass with the last sand running down, heavy dark shadows closing in around him, worried face. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
     },
     {
-      "narration": "ताकि दुनिया समझ सके कि इंसानियत का कोई धर्म, कोई जाति और कोई मजहब नहीं होता।",
-      "image_prompt": "A village gathering where people of different faiths sit together happily under a big banyan tree: a Hindu priest with a tilak, a Muslim man in a white cap, a Sikh man in a turban, a Christian woman with a cross necklace, all smiling and sharing food. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Vertical portrait composition, no text, no letters, no captions, no watermark."
+      "narration": "आज की खुशियां",
+      "image_prompt": "The young Indian man in a blue shirt laughing joyfully with friends on a village rooftop while children fly colorful kites in a bright blue sky, pure happiness in the present moment. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "जीना ना भूल जाए।",
+      "image_prompt": "A big joyful family sharing dinner in a village courtyard at sunset, glowing diyas and string lights, grandparents, Meera in a green sari and Arjun in a yellow shirt laughing together, savoring the moment. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "ईश्वर ने हर इंसान के",
+      "image_prompt": "A diverse group of Indian villagers standing together in a village square, a Hindu priest with a tilak, a Muslim man in a white skull cap, a Sikh man in an orange turban, a Christian woman in a simple sari, warm friendly faces, golden light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "खून का रंग लाल",
+      "image_prompt": "Close-up of a village child's scraped knee being gently bandaged by a caring hand, a single bold red drop of blood, symbolic and tender, warm background of a village lane, nothing graphic. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "इसलिए रखा ताकि दुनिया",
+      "image_prompt": "Many hands of different people in different colored sleeves reaching toward the center and joining over a glowing red heart, a soft golden glow, a quiet village horizon in the background. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "समझ सके कि इंसानियत का",
+      "image_prompt": "A Hindu man in a dhoti and a Muslim man in a white skull cap working together to lift a fallen bullock cart on a village road, villagers gathering to help, teamwork and humanity, warm afternoon light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "कोई धर्म, कोई जाति",
+      "image_prompt": "A village skyline at golden hour with a temple, a mosque, a gurdwara and a church standing side by side with no walls between them, a calm dirt road running through all of them, peaceful sky. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "और कोई मजहब नहीं होता।",
+      "image_prompt": "Villagers of all faiths and castes sitting together on one long mat sharing a simple meal under a big banyan tree, passing food to each other, laughing, a gentle red thread of cloth tied around the tree trunk. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
     },
     {
       "narration": "क्योंकि ईश्वर ने इंसान बनाए हैं।",
-      "image_prompt": "A wide cinematic view of a diverse Indian village crowd looking up at a warm golden divine light streaming through clouds over the rooftops, peaceful, hopeful and grateful faces, rays of light, no deity shown. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Vertical portrait composition, no text, no letters, no captions, no watermark."
+      "image_prompt": "A glowing divine golden hand of light gently shaping clay human figures on a potter's wheel in a village potter's yard, small finished clay people standing in a row, warm sacred cinematic light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
     },
     {
-      "narration": "इंसानों के बीच भेदभाव करने के लिए नहीं बल्कि एक-दूसरे का दर्द समझ के लिए।",
-      "image_prompt": "The elderly Indian village farmer with a white mustache, orange turban and simple white kurta dhoti gently comforting the young Indian woman in a red saree with a long black braid, a hand on her shoulder as he wipes her tears, warm evening light, a tender moment of understanding each other's pain. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Vertical portrait composition, no text, no letters, no captions, no watermark."
+      "narration": "इंसानों के बीच भेदभाव",
+      "image_prompt": "A village well with a rope dividing two groups of people who stand apart on either side, a small sad child in a yellow shirt looking at the rope, heavy gloomy sky, a sense of separation. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "करने के लिए नहीं",
+      "image_prompt": "Arjun, a ten-year-old boy in a yellow shirt, pulling down the dividing rope at the village well, people from both sides stepping toward each other, the clouds parting and warm light breaking through. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "बल्कि एक-दूसरे का",
+      "image_prompt": "Two village men from different backgrounds, one in a saffron turban and one in a white skull cap, hugging each other warmly, smiling with closed eyes, villagers clapping around them. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
+    },
+    {
+      "narration": "दर्द समझ के लिए।",
+      "image_prompt": "A villager gently placing a hand on the shoulder of a crying elderly woman and listening to her with compassion, other villagers gathering around with caring faces, golden sunset light over the village, tender and emotional. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, beautiful cinematic lighting, consistent character designs and proportions. Square 1:1 composition, no text, no letters, no watermark."
     }
   ]
 }
