@@ -377,10 +377,14 @@ async function dumpUiText(ui, name) {
     await gs.click({ timeout: 3000 }).catch(() => {});
   } catch (e) { console.log("Extension settings section not inspected:", String(e.message).slice(0, 100)); }
 
-  const deadline = Date.now() + cfg.timeoutMinutes * 60000;
+  // Hard 10 minute cap on the whole wait, whatever config.json or the workflow says.
+  const deadline = Date.now() + Math.min(cfg.timeoutMinutes, 10) * 60000;
   // Only account/quota problems end the wait early. A single failed prompt never does.
   const fatalRe = /sign in|not logged|quota|limit/i;
   let completionVia = "";
+  // Flow's "We noticed some unusual activity" failure card: Google is blocking this session, retrying or waiting is pointless.
+  let blocked = false;
+  const BLOCK_RE = /noticed some unusual activity/i;
 
   // Wait until the WHOLE queue is accounted for (all `expected` prompts finished or failed), a fatal problem appears,
   // or the overall deadline passes. Signals: the extension's "Done — N succeeded, M failed" message when N+M equals the
@@ -403,6 +407,13 @@ async function dumpUiText(ui, name) {
         if (c.complete) { done = true; completionVia = c.via; console.log("Queue complete via", c.via); break; }
         if (doneMsg) console.log("Done message counts " + doneMsg.total + " of " + expected + " prompts - still waiting");
         if (!doneMsg && fatalRe.test(txt)) { console.log("Extension reported an account/quota problem - stopping wait"); break; }
+      }
+      const ftxt = await flow.locator("body").innerText().catch(() => "");
+      if (BLOCK_RE.test(ftxt)) {
+        blocked = true;
+        console.log("::warning::Flow shows 'We noticed some unusual activity' - stopping the Flow step now and moving on with the images made so far");
+        await flow.screenshot({ path: path.join(DEBUG_DIR, "blocked.png") }).catch(() => {});
+        break;
       }
       tick += 1;
       if (tick % 8 === 0) await flow.screenshot({ path: path.join(DEBUG_DIR, "progress-" + tick + ".png") });
@@ -466,7 +477,7 @@ async function dumpUiText(ui, name) {
     const cur = collectImages();
     const miss = new Set(cur.missingScenes);
     const redo = state.map((s, i) => ({ s, i })).filter((x) => x.s.state === "GENERATION_FAILED" || miss.has(x.i + 1));
-    if (!redo.length || Date.now() > deadline) break;
+    if (!redo.length || Date.now() > deadline || blocked) break;
     console.log("Retry pass " + pass + " for prompts:", redo.map((x) => x.i + 1).join(","));
     try {
       const redoPrompts = redo.map((x) => prompts[x.i]);
@@ -489,6 +500,7 @@ async function dumpUiText(ui, name) {
     }
   }
 
+  if (blocked) mark('blocked_unusual_activity');
   if (retried) await flow.waitForTimeout(cfg.settleSeconds * 1000);
   try { if (/\/project\//.test(flow.url())) saveCookies(await context.cookies()); } catch (e) {}
   await context.close();
@@ -533,6 +545,10 @@ async function dumpUiText(ui, name) {
       "| Images kept (right ratio) | " + s.images_accepted + " of " + s.expected_images + " expected |", "| Images rejected (wrong ratio) | " + s.images_wrong_ratio + " (in downloads/rejected) |",
       "| Extra images beyond request | " + s.extra_images + " |", "| Scene mapping | " + (s.mapping_available ? "UUID match, missing scenes: " + (s.missing_scenes.join(",") || "none") : "NOT available") + " |", ""].join(NL);
     try { fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + NL); } catch (e) {}
+  }
+  if (blocked) {
+    console.log("::warning::Flow was blocked ('unusual activity'). Kept " + img.accepted + " image(s); the remaining scenes use the normal image providers.");
+    process.exit(0);
   }
   if (verdict.status === "FAILED") { console.log("::error::Batch FAILED - " + verdict.reasons.join("; ")); process.exit(1); }
   if (verdict.status === "PARTIAL_SUCCESS") {
