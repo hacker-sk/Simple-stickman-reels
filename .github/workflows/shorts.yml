@@ -14,7 +14,8 @@ name: Hindi Shorts
 #            image prompt with its scene number at the very beginning ([s01], [s02] ...) and uploads voice + word timing + tagged
 #            prompts as the "flow-prep" artifact.
 #   flow:    only the browser work. Downloads "flow-prep", generates the images with Google Flow (ZAPI FLOW extension, same setup
-#            as flow-batch.yml, 1 hour cap), matches every image to its prompt through Flow's own media ids, saves it as scene_NN.<ext>,
+#            as flow-batch.yml, 10 minute wait cap; it also stops at once when Flow shows "We noticed some unusual activity"),
+#            matches every image to its prompt through Flow's own media ids, saves it as scene_NN.<ext>,
 #            retries scenes that have no usable image, and uploads the images + a manifest as the "flow-images" artifact.
 #   make:    always runs afterwards (also when prepare or flow failed). Reuses the prepared voice and word timing only when the
 #            narration hash matches (otherwise it makes its own voice and runs its own Whisper), gives each scene its scene_NN image,
@@ -173,7 +174,7 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.flow == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -216,7 +217,7 @@ jobs:
 
       - name: Run Flow batch
         continue-on-error: true
-        timeout-minutes: 50
+        timeout-minutes: 13
         working-directory: flow-batch
         env:
           FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
@@ -226,9 +227,9 @@ jobs:
           FLOW_COUNT: "1"
           FLOW_MODEL: ${{ vars.FLOW_MODEL || 'Nano Banana Lite' }}
         run: |
-          # The script collects the finished images only after its own wait ends (config.json says 90 minutes).
-          # Shorten that wait for this job so the images are collected and uploaded before the 50 minute step cap.
-          sed -i 's/"timeoutMinutes": *[0-9]*/"timeoutMinutes": 38/' config.json
+          # The script waits at most 10 minutes (hard cap in run_flow.js) and stops at once on Flow's "unusual activity" error,
+          # then collects the images. The step cap is a little longer so collection and upload still finish.
+          sed -i 's/"timeoutMinutes": *[0-9]*/"timeoutMinutes": 10/' config.json
           xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
 
       - name: Save refreshed Flow session
