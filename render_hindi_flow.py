@@ -2,12 +2,13 @@
 """Hindi Shorts renderer that prefers Google Flow images.
 
 run_shorts.py starts this instead of render_hindi.py (RENDER_SCRIPT). It
-  1. reuses the voiceover that was made BEFORE Flow (so the time tags on the Flow prompts stay true), when it belongs to this narration,
-  2. reuses the word timing saved with that voice (so Whisper does not run a second time), only together with that same voice,
-  3. matches the Flow images in FLOW_DIR to the scenes by the [minute-second] tag in their file names (pipeline/flow_images.py),
-  4. replaces render_hindi.generate_image so a scene with a tagged Flow image uses it and every other scene goes through the
+  1. reuses the voiceover that was made BEFORE Flow (so the voice and timing stay the same), when it belongs to this narration,
+  2. reuses the word timing saved with that voice (so no alignment runs a second time), only together with that same voice,
+  3. when no saved timing fits, works out the word timing itself by FORCED ALIGNMENT of the known script (same as prepare),
+     and only if that fails or gives the wrong word count falls back to the renderer's own align_words (Whisper),
+  4. matches the Flow images in FLOW_DIR to the scenes (scene_NN files, pipeline/flow_images.py),
+  5. replaces render_hindi.generate_image so a scene with a Flow image uses it and every other scene goes through the
      normal providers (HINDI_IMAGE_ORDER).
-When the voice is regenerated, render_hindi makes its own voice and runs its own word timing (fresh Whisper) as before.
 render_hindi.py itself is unchanged. Any Flow problem just means the normal providers make the images.
 One log line starts with 'VOICE CASE:' and says which case happened: reused, regenerated (and why) or hash mismatch.
 """
@@ -48,10 +49,37 @@ def load_scenes():
 
 CASE_TEXT = {
     'reused': 'REUSED the voiceover and word timing made before Flow',
-    'no_prep': 'REGENERATED: no prepare data was found, the renderer makes its own voice and runs its own Whisper',
-    'voice_missing': 'REGENERATED: the saved voice file is missing or too small, the renderer makes its own voice and runs its own Whisper',
-    'hash_mismatch': 'HASH MISMATCH: the narration changed since prepare, the renderer makes its own voice and runs its own Whisper, Flow images are not used',
+    'no_prep': 'REGENERATED: no prepare data was found, the renderer makes its own voice and aligns the script itself',
+    'voice_missing': 'REGENERATED: the saved voice file is missing or too small, the renderer makes its own voice and aligns the script itself',
+    'hash_mismatch': 'HASH MISMATCH: the narration changed since prepare, the renderer makes its own voice and aligns the script itself, Flow images are not used',
 }
+
+
+def use_forced_alignment():
+    """Word timing by FORCED ALIGNMENT of the known script (same call as the prepare job). Falls back to the renderer's own
+    align_words (Whisper) when the alignment fails or does not return exactly one timing per script word."""
+    try:
+        from pipeline import align_forced
+        original = rh.align_words
+
+        def align_words(script_words, duration, audio_path):
+            try:
+                words = align_forced.forced_words(script_words, duration, audio_path, log=log)
+                if words and len(words) == len(script_words):
+                    rh.log('word timing: forced alignment of the known script (' + str(len(words)) + ' words)')
+                    return words
+                log('forced alignment returned ' + str(len(words or [])) + ' words for ' + str(len(script_words)) + ', using the renderer timing')
+            except Exception as e:  # noqa
+                log('forced alignment not used, using the renderer timing: ' + str(e)[:200])
+            return original(script_words, duration, audio_path)
+
+        rh.align_words = align_words
+        log('word timing will use forced alignment first, Whisper only as fallback')
+        return True
+    except Exception:  # noqa
+        log('forced alignment could not be installed, the renderer runs its own word timing')
+        traceback.print_exc()
+        return False
 
 
 def use_flow_voice(scenes, fdir):
@@ -71,7 +99,7 @@ def use_flow_voice(scenes, fdir):
         rh.make_voice = make_voice
         return True
     except Exception:  # noqa
-        log('VOICE CASE: REGENERATED: voice reuse failed, the renderer makes its own voice and runs its own Whisper')
+        log('VOICE CASE: REGENERATED: voice reuse failed, the renderer makes its own voice and aligns the script itself')
         traceback.print_exc()
         return False
 
@@ -83,11 +111,11 @@ def use_flow_words(scenes, fdir):
         words = flow_images.find_words(fdir, flow_images.narration_of(scenes))
         if not words:
             return False
-        original = rh.align_words
+        original = rh.align_words  # already the forced-alignment version when it could be installed
 
         def align_words(script_words, duration, audio_path):
             if len(script_words) == len(words) and all(w[0] == s for w, s in zip(words, script_words)):
-                rh.log('word timing: reused the timing saved before Flow (' + str(len(words)) + ' words), Whisper not run again')
+                rh.log('word timing: reused the timing saved before Flow (' + str(len(words)) + ' words), alignment not run again')
                 return words
             rh.log('word timing: the saved timing does not fit this script, running the word timing again')
             return original(script_words, duration, audio_path)
@@ -133,13 +161,15 @@ def install(flow_map):
 
 
 if __name__ == '__main__':
+    # Forced alignment goes in first, so every later wrapper (saved-timing reuse) falls back to it, not to plain Whisper.
+    use_forced_alignment()
     fdir = flow_dir()
     scenes = load_scenes() if fdir else None
     if fdir and scenes:
         if use_flow_voice(scenes, fdir):
             use_flow_words(scenes, fdir)
     else:
-        log('VOICE CASE: REGENERATED: no Flow data for this run, the renderer makes its own voice and runs its own Whisper')
+        log('VOICE CASE: REGENERATED: no Flow data for this run, the renderer makes its own voice and aligns the script itself')
     fm = load_flow_map(scenes, fdir)
     log('Flow images will be used for ' + str(len(fm)) + ' scene(s)')
     install(fm)
