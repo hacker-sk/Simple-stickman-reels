@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const { chromium } = require("playwright");
 const { applyFlowSettings, resolveAspect, matchesAspect } = require("./flow_helpers");
 const { parseDoneMessage, isQueueComplete, detectOverGeneration, computeBatchStatus, validateModel, uniqueName } = require("./flow_utils");
+const { turnOffSerial } = require("./ext_settings");
 
 const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8"));
 const FLOW_URL = process.env.FLOW_URL || cfg.flowUrl;
@@ -321,6 +322,9 @@ async function dumpUiText(ui, name) {
   await ui.waitForTimeout(4000);
   await ui.screenshot({ path: path.join(DEBUG_DIR, "02-ui.png") });
   await dumpUiText(ui, "02-ui-text.txt");
+
+  // Turn OFF the extension's serial number option (best effort; result is written to debug/02d-serial-toggle.json).
+  await turnOffSerial(ui, DEBUG_DIR);
 
   // Diagnostic only: record the extension's own generation-settings controls, then close the section again.
   try {
