@@ -13,10 +13,13 @@ WhisperX transcription timing. Prepare already does forced alignment first by it
 
 NAME = 'Deep warm Hindi baritone narrator v3'
 DESC = 'Deep, warm Indian male baritone with crisp Devanagari pronunciation, rich chest resonance, close-mic proximity, and high studio loudness.'
-STYLE = ('Deliver in an expressive, emotionally gripping storytelling tone at a steady, engaging pace. '
-         'Read continuous, unpunctuated Devanagari text smoothly, using only brief, natural micro-pauses between complete thoughts\u2014'
-         'never long or frequent pauses. Emphasize key feelings and impactful words through stronger vocal projection, chest weight, '
-         'and dynamic pitch shifts without dragging out the speed.')
+# Pace lives in STYLE (sent with every TTS call), so changing it needs no new voice name.
+STYLE = ('Deliver in an expressive, emotionally gripping storytelling tone. '
+         'Speak at the relaxed, natural conversational pace of an average young Indian man talking to a friend: '
+         'a little slower than a fast narrator, only slightly quicker than a calm, unhurried reading. '
+         'Do not rush or speed-read. Read continuous, unpunctuated Devanagari text smoothly, with brief, natural micro-pauses '
+         'between complete thoughts and clear enunciation of every word. Emphasize key feelings and impactful words through '
+         'stronger vocal projection, chest weight, and dynamic pitch shifts, without dragging out the speed.')
 
 
 def apply_voice(rh):
