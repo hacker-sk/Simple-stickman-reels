@@ -1,0 +1,42 @@
+name: Sync BGM from Drive
+
+# Copies the background songs listed in music_hindi/music_manifest.json from the shared Google Drive folder
+# ("Bgm library for hindi reels", link sharing on) into music_hindi/ and commits them.
+# Runs when the manifest changes, or by hand: Actions > Sync BGM from Drive > Run workflow.
+
+on:
+  push:
+    paths:
+      - "music_hindi/music_manifest.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-music
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the songs from Google Drive
+        run: python3 pipeline/sync_music.py
+
+      - name: Commit the songs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add music_hindi
+          if git diff --cached --quiet; then echo "No song changes"; exit 0; fi
+          git commit -m "Sync BGM songs from Drive (run ${{ github.run_id }})"
+          for i in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin main && git push origin HEAD:main; then exit 0; fi
+            sleep $((i * 5))
+          done
+          echo "::error::Could not push the songs after 5 tries"
+          exit 1
