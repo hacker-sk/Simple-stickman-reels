@@ -11,15 +11,12 @@ or saved timing that does not fit), it tries FORCED alignment of the known scrip
 WhisperX transcription timing. Prepare already does forced alignment first by itself, so it does not use this patch.
 """
 
-NAME = 'Deep warm Hindi baritone narrator v3'
-DESC = 'Deep, warm Indian male baritone with crisp Devanagari pronunciation, rich chest resonance, close-mic proximity, and high studio loudness.'
-# Pace lives in STYLE (sent with every TTS call), so changing it needs no new voice name.
-STYLE = ('Deliver in an expressive, emotionally gripping storytelling tone. '
-         'Speak at the relaxed, natural conversational pace of an average young Indian man talking to a friend: '
-         'a little slower than a fast narrator, only slightly quicker than a calm, unhurried reading. '
-         'Do not rush or speed-read. Read continuous, unpunctuated Devanagari text smoothly, with brief, natural micro-pauses '
-         'between complete thoughts and clear enunciation of every word. Emphasize key feelings and impactful words through '
-         'stronger vocal projection, chest weight, and dynamic pitch shifts, without dragging out the speed.')
+NAME = 'Deep warm Hindi baritone narrator v4'
+DESC = 'Deep, warm Indian male baritone with crisp Devanagari pronunciation, chest resonance, close-mic presence, and high studio loudness.'
+# Style instructions live in STYLE (sent with every TTS call), so changing them needs no new voice name.
+STYLE = ('Adapt emotional delivery naturally to match the script\u2014inspiring for motivation, engaging for stories, heartfelt for emotion, and crisp for quotes. '
+         'Maintain a steady pace through continuous, unpunctuated Devanagari, using only brief micro-pauses between complete thoughts. '
+         'Emphasize key feelings and words through vocal projection and pitch shifts without slowing down.')
 
 
 def apply_voice(rh):
