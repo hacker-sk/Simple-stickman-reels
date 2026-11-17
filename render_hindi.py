@@ -271,8 +271,8 @@ def gemini_call(model, body, timeout=300):
         raise RuntimeError('Gemini HTTP ' + str(r.status_code) + ': ' + r.text[:200])
 
 
-DESIGN_NAME = 'Soft husky Hindi storyteller male'
-DESIGN_DESC = 'A natural, youthful Indian male in his mid-20s speaking fluent Hindi, with a slightly nasal, soft husky vocal texture. A casual, friendly, expressive storytelling voice with a subtle playful tone, conversational and slightly laid-back, with natural pitch variation. Not a formal newsreader, no excessive bass.'
+DESIGN_NAME = 'Deep warm Hindi baritone storyteller'
+DESIGN_DESC = 'A deep, warm, resonant Indian male baritone in his 30s speaking fluent conversational Hindi, with strong close-mic studio presence and high vocal clarity. A wise, engaging storyteller with a rich, full chest voice and a steady pace. Not nasal, not thin, no husky rasp, not a formal newsreader.'
 _DV = {}
 _DV_LOCK = threading.Lock()
 
