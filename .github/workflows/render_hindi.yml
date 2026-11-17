@@ -71,7 +71,7 @@ jobs:
           COLAB_TOKEN: ${{ secrets.COLAB_TOKEN }}
           IMAGE_PROVIDER_ORDER: ${{ vars.IMAGE_PROVIDER_ORDER }}
           HINDI_IMAGE_ORDER: ${{ vars.IMAGE_PROVIDER_ORDER }}
-        run: python render_hindi.py
+        run: python run_hindi.py
 
       - name: Keep a copy as a release
         if: success()
