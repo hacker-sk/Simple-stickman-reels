@@ -3,12 +3,14 @@
 The package carries everything the renderer needs, so no topic, script or image-prompt step runs:
 
 {
-  "title": "...", "description": "...", "mood": "emotional",          (mood: inspiring|emotional|mysterious|dramatic|upbeat|calm)
+  "title": "...", "description": "...", "mood": "emotional",          (mood: motivational|emotional|neutral; the older inspiring|mysterious|dramatic|upbeat|calm still work)
   "hashtags": ["..."], "tags": ["..."],                              (optional, same handling as the script step)
   "hook": "opening line shown above the picture"  or  {"line": "...", "focus": "..."},   (optional, default = script opening)
   "art_style": "painterly|sepia|night|golden",                       (optional, default = the art_style input)
   "scenes": [{"narration": "Hindi in Devanagari", "image_prompt": "English prompt used as written"}, ...]
 }
+
+The mood picks the background music: one random song named <mood>_NN or neutral_NN in music_hindi/ (see music_picker.py).
 
 Same checks as the n8n 'Claude Package' node.
 """
@@ -17,6 +19,7 @@ import json
 from . import script, styles
 
 MAX_PROMPT = 1900
+MUSIC_MOODS = ('motivational', 'emotional', 'neutral')
 
 
 def _s(v):
@@ -49,8 +52,8 @@ def parse(raw):
     if not description:
         raise RuntimeError('package: description is missing')
     mood = _s(b.get('mood')).lower()
-    if mood not in script.MOODS:
-        raise RuntimeError('package: mood must be one of ' + ', '.join(script.MOODS))
+    if mood not in MUSIC_MOODS and mood not in script.MOODS:
+        raise RuntimeError('package: mood must be one of ' + ', '.join(MUSIC_MOODS))
     in_scenes = b.get('scenes') if isinstance(b.get('scenes'), list) else []
     if not in_scenes:
         raise RuntimeError('package: scenes list is empty')

@@ -90,9 +90,11 @@ def run_renderer(job):
     child.setdefault('OUT_DIR', OUT_DIR)
     if env('IMAGE_PROVIDER_ORDER') and not env('HINDI_IMAGE_ORDER'):
         child['HINDI_IMAGE_ORDER'] = env('IMAGE_PROVIDER_ORDER')
-    log('starting the renderer (' + str(len(job['scenes'])) + ' scenes)')
+    # run_hindi.py installs the mood based music picker and then runs the renderer chosen above
+    child['RENDER_TARGET'] = RENDERER
+    log('starting the renderer (' + str(len(job['scenes'])) + ' scenes, mood ' + str(job.get('mood')) + ')')
     try:
-        rc = subprocess.run([sys.executable, RENDERER], cwd=ROOT, env=child, timeout=RENDER_TIMEOUT).returncode
+        rc = subprocess.run([sys.executable, os.path.join(ROOT, 'run_hindi.py')], cwd=ROOT, env=child, timeout=RENDER_TIMEOUT).returncode
     except subprocess.TimeoutExpired:
         raise RuntimeError('The renderer ran longer than ' + str(RENDER_TIMEOUT // 60) + ' minutes and was stopped')
     if rc != 0:
