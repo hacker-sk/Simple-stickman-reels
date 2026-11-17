@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
-"""Google Flow images for the Hindi Shorts pipeline.
+"""Google Flow images for the Hindi Shorts pipeline (voice + time tags version).
 
-prepare : package JSON -> flow-batch/prompts/shorts_flow.json (prompts with an extra 'Image name: ...' line)
-          + flow-batch/prompts/shorts_flow_meta.json (scene index -> short name). Sets the step output flow=true.
-match   : (used by render_hindi_flow.py) scenes + Flow images folder -> {scene index: image path}.
-          1) descriptive filename vs the scene's short name,
-          2) Gemini 3.1 vision, ONE request per image (every one of the API keys is tried on any failure),
-          3) elimination.
-          Scenes without a confident match are left out, so the normal providers make those images.
-Everything here is best effort: any problem means fewer (or no) Flow images, never a failed video.
+prepare : package JSON -> 1) the voiceover is made FIRST (the same make_voice the renderer uses), 2) each scene's start time is
+          worked out from that voice, 3) every image prompt gets its start time as a tag at the very beginning, e.g. '[0-5] ...'
+          (minute-second, so 1 min 7 s is '[1-7]'). Writes flow-batch/prompts/shorts_flow.json (the tagged prompts),
+          shorts_flow_meta.json (scene index -> tag, narration hash) and shorts_flow_voice.wav (reused by the renderer, so the
+          times stay true). Sets the step output flow=true ONLY when all of that worked; otherwise Flow is skipped.
+match   : (used by render_hindi_flow.py) reads the tag out of every Flow image file name and gives each scene the image with
+          its tag. A scene without a matching tagged image gets no Flow image, so the normal providers (Cloudflare ...) make it.
+          Optional extra (off by default): FLOW_VISION_FALLBACK=true lets Gemini 3.1 vision place untagged images.
+Everything is best effort: any problem means fewer (or no) Flow images, never a failed video.
 """
 import argparse
 import base64
-import difflib
+import hashlib
 import io
 import json
 import os
 import re
+import shutil
 import sys
 import time
-from collections import defaultdict
+import types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -29,12 +31,13 @@ from pipeline import gemini  # noqa: E402
 
 IMG_EXT = ('.png', '.jpg', '.jpeg', '.webp')
 META_NAME = 'shorts_flow_meta.json'
-NAME_MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.5-flash']
+VOICE_NAME = 'shorts_flow_voice.wav'
 VISION_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.1-flash', 'gemini-3.1-pro']
-MIN_SCORE = 0.6
-MIN_MARGIN = 0.1
-VISION_MIN = 6      # of 10: minimum vision score to accept a scene/image pair
+VISION_MIN = 6
 MIN_BYTES = 3000
+
+TAG_BRACKET = re.compile(r'\[(\d{1,2})-(\d{1,2})\]')
+TAG_LOOSE = re.compile(r'(?<![0-9A-Za-z])(\d{1,2})[-_](\d{1,2})(?![0-9A-Za-z])')
 
 
 def log(*a):
@@ -48,36 +51,82 @@ def set_output(key, value):
             fh.write(key + '=' + str(value) + '\n')
 
 
+def narration_of(scenes):
+    return ' '.join(str(s.get('narration') or '').strip() for s in scenes)
+
+
+def sha(text):
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
 # ----------------------------------------------------------------------------- prepare
-def clean_name(n):
-    words = re.sub(r'[^a-z0-9 ]+', ' ', str(n).lower()).split()
-    return ' '.join(words[:5])
+def scene_starts(scenes, dur):
+    """Start second of every scene: the real voice length shared out over the words by letter count."""
+    words, owner = [], []
+    for si, s in enumerate(scenes):
+        for w in str(s.get('narration') or '').split():
+            words.append(w)
+            owner.append(si)
+    weights = [max(2, len(w)) + 2 for w in words]
+    total = float(sum(weights)) or 1.0
+    usable = float(dur) * 0.97
+    t = 0.0
+    starts = {}
+    for wt, si in zip(weights, owner):
+        starts.setdefault(si, t)
+        t += usable * wt / total
+    for si in range(len(scenes)):
+        starts.setdefault(si, t)
+    return starts
 
 
-def fallback_name(i, prompt):
-    words = re.findall(r'[A-Za-z]{3,}', prompt)[:4]
-    return ' '.join(w.lower() for w in words) or 'scene ' + str(i + 1)
+def make_tags(indexes, starts):
+    """Unique (minute, second) per scene. Two scenes in the same second push the later one to the next free second."""
+    used = set()
+    out = {}
+    for i in indexes:
+        sec = int(starts.get(i, 0.0))
+        while sec in used:
+            sec += 1
+        used.add(sec)
+        out[i] = (sec // 60, sec % 60)
+    return out
 
 
-def make_names(items):
-    """One short English label per scene (2-4 words) from Gemini; a plain fallback when Gemini fails."""
-    names = [fallback_name(i, s['image_prompt']) for i, s in items]
+def load_scenes(raw):
+    data = json.loads(raw)
     try:
-        listing = '\n'.join(str(k) + ': ' + s['image_prompt'][:300].replace('\n', ' ') for k, (i, s) in enumerate(items))
-        text = gemini.generate(
-            'You write very short English image labels.',
-            'Below are ' + str(len(items)) + ' numbered image prompts. For each one write a label of 2 to 4 lowercase English '
-            'words naming its main subject, like "student studying", "clock" or "road to success". Labels must clearly differ '
-            'from each other. Reply ONLY with JSON: {"names": [...]} with exactly ' + str(len(items)) + ' strings, in order.\n\n' + listing,
-            'flow-names', max_tokens=1500, temperature=0.3, json_mode=True, models=NAME_MODELS)
-        got = (gemini.extract_json(text) or {}).get('names')
-        if isinstance(got, list) and len(got) == len(items):
-            names = [clean_name(g) or names[k] for k, g in enumerate(got)]
-        else:
-            log('Gemini returned an unusable name list, using fallback names')
+        from pipeline import package
+        return package.parse(raw)['scenes']
     except Exception as e:  # noqa
-        log('naming with Gemini failed, using fallback names: ' + str(e)[:150])
-    return names
+        log('package.parse not used (' + str(e)[:80] + '), reading the scenes directly')
+    scenes = data.get('scenes') if isinstance(data, dict) else data
+    return [s for s in (scenes or []) if isinstance(s, dict)]
+
+
+def make_voice_file(narration, path):
+    """The renderer's own make_voice (Gemini, then ElevenLabs, then Fish). Returns the duration in seconds."""
+    work = os.path.abspath('flow_work')
+    os.makedirs(work, exist_ok=True)
+    os.environ['WORK_DIR'] = work
+    os.environ['OUT_DIR'] = os.path.abspath('flow_out')
+    try:
+        from pipeline.run_shorts import VOICE
+    except Exception:  # noqa
+        VOICE = {'language': 'hi', 'gemini_voice': 'designed',
+                 'gemini_style': 'crisp, punchy, confident, high energy; slightly faster than normal pace, easing to normal speed on key and emotional lines, never fast throughout',
+                 'gemini_models': ['gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts'],
+                 'voice_id': 'ibbx9zDYGvLgtYzRbqqG', 'fish_voice_id': '6366ea69a97d41ada9eb855a64e56fba', 'fish_model': 's2.1-pro-free'}
+    os.environ['PAYLOAD'] = json.dumps(VOICE)
+    stub = types.ModuleType('render_hindi_overlay')   # the overlay module is only needed for drawing, not for the voice
+    stub.STATE = {}
+    sys.modules.setdefault('render_hindi_overlay', stub)
+    import render_hindi as rh
+    rh.make_voice(narration, path)
+    dur = rh.audio_duration(path)
+    if dur > rh.MAX_VOICE_SECONDS:
+        raise RuntimeError('voice is ' + str(int(dur)) + 's, over the limit')
+    return dur
 
 
 def cmd_prepare(a):
@@ -89,49 +138,44 @@ def cmd_prepare(a):
         log('no package given (not a package run), Flow is skipped')
         return 0
     try:
-        data = json.loads(raw)
+        scenes = load_scenes(raw)
     except Exception as e:  # noqa
         log('package is not valid JSON, Flow is skipped: ' + str(e)[:100])
         return 0
-    scenes = data.get('scenes') if isinstance(data, dict) else data
-    items = []
-    for i, s in enumerate(scenes or []):
-        if isinstance(s, dict) and str(s.get('image_prompt') or '').strip():
-            items.append((i, {'image_prompt': str(s['image_prompt']).strip()}))
-    if not items:
-        log('package has no image prompts, Flow is skipped')
+    items = [i for i, s in enumerate(scenes) if str(s.get('image_prompt') or '').strip()]
+    narration = narration_of(scenes)
+    if not items or not narration.strip():
+        log('package has no image prompts or no narration, Flow is skipped')
         return 0
-    names = make_names(items)
-    prompts = [s['image_prompt'] + ' Image name: ' + names[k] + '.' for k, (i, s) in enumerate(items)]
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(a.voice)), exist_ok=True)
+        dur = make_voice_file(narration, a.voice)
+    except Exception as e:  # noqa
+        log('voiceover could not be made, Flow is skipped and the normal image providers are used: ' + str(e)[:200])
+        return 0
+    starts = scene_starts(scenes, dur)
+    tags = make_tags(items, starts)
+    prompts = ['[' + str(tags[i][0]) + '-' + str(tags[i][1]) + '] ' + str(scenes[i]['image_prompt']).strip() for i in items]
     os.makedirs(os.path.dirname(os.path.abspath(a.prompts)), exist_ok=True)
     with open(a.prompts, 'w', encoding='utf-8') as fh:
         json.dump(prompts, fh, ensure_ascii=False, indent=1)
-    meta = {'scene_count': len(scenes), 'scenes': [{'index': i, 'name': names[k]} for k, (i, s) in enumerate(items)]}
+    meta = {'scene_count': len(scenes), 'narration_sha': sha(narration), 'voice_file': VOICE_NAME, 'voice_seconds': round(dur, 2),
+            'scenes': [{'index': i, 'tag': str(tags[i][0]) + '-' + str(tags[i][1]), 'start': round(starts.get(i, 0.0), 2)} for i in items]}
     with open(a.meta, 'w', encoding='utf-8') as fh:
         json.dump(meta, fh, ensure_ascii=False, indent=1)
-    log('wrote ' + str(len(prompts)) + ' Flow prompts: ' + ' | '.join(names))
+    log('voice ' + str(round(dur, 1)) + 's made; ' + str(len(prompts)) + ' Flow prompts tagged: ' +
+        ' | '.join('[' + m['tag'] + '] scene ' + str(m['index'] + 1) for m in meta['scenes']))
     set_output('flow', 'true')
     return 0
 
 
 # ----------------------------------------------------------------------------- match
-def slug(filename):
-    stem = os.path.splitext(os.path.basename(filename))[0].lower()
+def parse_tag(filename):
+    """(minute, second) tag found in a file name, or None. Accepts '[0-5]' and the forms a downloader makes of it ('0-5', '0_5')."""
+    stem = os.path.splitext(os.path.basename(filename))[0]
     stem = re.sub(r'^\d{10,}-', '', stem)
-    stem = re.sub(r'[-_ ]\d{1,2}$', '', stem)
-    toks = re.sub(r'[^a-z0-9]+', ' ', stem).split()
-    return ' '.join(t for t in toks if not (len(t) >= 8 and re.search(r'\d', t)))
-
-
-def score(a, b):
-    ta, tb = set(a.split()), set(b.split())
-    if not ta or not tb:
-        return 0.0
-    inter = len(ta & tb)
-    jac = inter / float(len(ta | tb))
-    cont = inter / float(min(len(ta), len(tb)))
-    seq = difflib.SequenceMatcher(None, a, b).ratio()
-    return max(jac, 0.85 * cont, 0.9 * seq)
+    m = TAG_BRACKET.search(stem) or TAG_LOOSE.search(stem)
+    return (int(m.group(1)), int(m.group(2))) if m else None
 
 
 def _scan(flow_dir, skip):
@@ -143,34 +187,48 @@ def _scan(flow_dir, skip):
         for f in sorted(fn):
             p = os.path.join(dp, f)
             if f.lower().endswith(IMG_EXT) and os.path.getsize(p) >= MIN_BYTES:
-                out.append({'name': f, 'path': os.path.abspath(p), 'slug': slug(f), 'mtime': os.path.getmtime(p)})
+                out.append({'name': f, 'path': os.path.abspath(p), 'mtime': os.path.getmtime(p)})
     return out
 
 
 def find_images(flow_dir):
     out = _scan(flow_dir, ('rejected', 'debug', 'raw'))
-    if not out:  # the images may sit in a folder we normally skip
+    if not out:
         out = _scan(flow_dir, ('rejected', 'debug'))
         if out:
             log('no images outside raw/, using the raw folder images')
-    # keep one entry per file name
     seen, uniq = set(), []
-    for im in out:
+    for im in sorted(out, key=lambda x: x['mtime']):
         if im['name'] not in seen:
             seen.add(im['name'])
             uniq.append(im)
     return uniq
 
 
-def find_meta(flow_dir):
+def find_meta_dir(flow_dir):
+    """(meta dict, folder it lives in) or (None, None)."""
     for dp, dn, fn in os.walk(flow_dir):
         if META_NAME in fn:
             try:
                 with open(os.path.join(dp, META_NAME), encoding='utf-8') as fh:
-                    return json.load(fh)
+                    return json.load(fh), dp
             except Exception:  # noqa
-                return None
-    return None
+                return None, None
+    return None, None
+
+
+def find_voice(flow_dir, narration):
+    """Path of the voice made before Flow when it belongs to exactly this narration, else None."""
+    meta, folder = find_meta_dir(flow_dir)
+    if not meta or not folder:
+        return None
+    p = os.path.join(folder, meta.get('voice_file') or VOICE_NAME)
+    if not os.path.isfile(p) or os.path.getsize(p) < 10000:
+        return None
+    if meta.get('narration_sha') != sha(narration):
+        log('the saved voice belongs to a different narration, a new voice will be made')
+        return None
+    return p
 
 
 def thumb_b64(path):
@@ -183,31 +241,25 @@ def thumb_b64(path):
 
 
 def vision_scores(image, scene_rows, start_key=0):
-    """Ask Gemini 3.1 how well ONE image fits each candidate scene. Returns {scene index: score 0-10}.
-    For every model, every API key is tried (rotating on ANY failure). Raises only when all keys failed on all models."""
+    """Optional extra: ask Gemini 3.1 how well ONE image fits each candidate scene. Every API key is tried for every model."""
     import requests
     lines = []
-    for i, narr, name, prompt in scene_rows:
-        lines.append('scene ' + str(i) + ': narration (Hindi): ' + narr[:300].replace('\n', ' ') +
-                     ' | intended image: ' + (name or 'unknown') + ' | prompt: ' + prompt[:250].replace('\n', ' '))
+    for i, narr, prompt in scene_rows:
+        lines.append('scene ' + str(i) + ': narration (Hindi): ' + narr[:300].replace('\n', ' ') + ' | prompt: ' + prompt[:250].replace('\n', ' '))
     text = ('You are matching ONE generated image to the scenes of a short video. Candidate scenes:\n' + '\n'.join(lines) +
-            '\n\nLook at the image (file name: ' + image['name'] + ') and rate from 0 to 10 how well it shows EACH scene '
-            '(10 = clearly this scene, 0 = unrelated). Reply ONLY with JSON: {"scores": {"<scene number>": <0-10>}} '
-            'with every scene number listed above.')
-    body = {'contents': [{'role': 'user', 'parts': [
-        {'text': text},
-        {'inline_data': {'mime_type': 'image/jpeg', 'data': thumb_b64(image['path'])}}]}],
-        'generationConfig': {'maxOutputTokens': 1500, 'temperature': 0.1, 'responseMimeType': 'application/json'}}
+            '\n\nRate from 0 to 10 how well the image shows EACH scene (10 = clearly this scene). Reply ONLY with JSON: '
+            '{"scores": {"<scene number>": <0-10>}} with every scene number listed above.')
+    body = {'contents': [{'role': 'user', 'parts': [{'text': text}, {'inline_data': {'mime_type': 'image/jpeg', 'data': thumb_b64(image['path'])}}]}],
+            'generationConfig': {'maxOutputTokens': 1500, 'temperature': 0.1, 'responseMimeType': 'application/json'}}
     keys = gemini.api_keys()
     last = ''
-    for sweep in range(2):  # second sweep catches short-lived overload/rate limits
+    for sweep in range(2):
         for model in VISION_MODELS:
             for k in range(len(keys)):
                 key = keys[(start_key + k) % len(keys)]
                 try:
                     r = requests.post('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent',
-                                      headers={'x-goog-api-key': key, 'Content-Type': 'application/json'},
-                                      data=json.dumps(body), timeout=120)
+                                      headers={'x-goog-api-key': key, 'Content-Type': 'application/json'}, data=json.dumps(body), timeout=120)
                     if r.status_code == 200:
                         got = gemini.extract_json(gemini.response_text(r.json()))
                         sc = (got or {}).get('scores')
@@ -233,90 +285,59 @@ def vision_scores(image, scene_rows, start_key=0):
 
 
 def build_map(scenes, flow_dir, work_dir=None):
-    """Returns {scene index: absolute image path} for the scenes that got a confident Flow image."""
+    """{scene index: absolute image path} for the scenes whose tag was found in a Flow image file name."""
     images = find_images(flow_dir)
     if not images:
-        log('no Flow images found in ' + flow_dir)
+        log('no Flow images found in ' + flow_dir + ', the normal providers make every image')
         return {}
-    log(str(len(images)) + ' Flow images: ' + ', '.join(i['name'] for i in images))
-    meta = find_meta(flow_dir)
-    names = {}
-    submitted = set(i for i, s in enumerate(scenes) if str(s.get('image_prompt') or '').strip())
-    if meta and meta.get('scene_count') == len(scenes) and isinstance(meta.get('scenes'), list):
-        submitted = set()
-        for m in meta['scenes']:
-            i = m.get('index')
-            if isinstance(i, int) and 0 <= i < len(scenes):
-                submitted.add(i)
-                names[i] = clean_name(m.get('name') or '')
-    elif meta:
-        log('scene count differs from the Flow meta, ignoring the short names')
-    elif not meta:
-        log('no Flow meta file found, filename matching is skipped; Gemini vision decides')
-    assigned = {}
-    method = {}
-    used = set()
-    by_name = dict((im['name'], im) for im in images)
-
-    # 1) filename vs short name
-    pairs = []
-    by_s, by_i = defaultdict(list), defaultdict(list)
-    for i in sorted(submitted):
-        if not names.get(i):
+    meta, _ = find_meta_dir(flow_dir)
+    if not meta or not isinstance(meta.get('scenes'), list) or meta.get('scene_count') != len(scenes):
+        log('Flow meta is missing or does not fit these scenes, the normal providers make every image')
+        return {}
+    parsed = [(im, parse_tag(im['name'])) for im in images]
+    log(str(len(images)) + ' Flow images, tags read from the file names: ' +
+        ', '.join(im['name'] + ' -> ' + (('[' + str(t[0]) + '-' + str(t[1]) + ']') if t else 'no tag') for im, t in parsed))
+    by_tag = {}
+    for im, t in parsed:
+        if t:
+            by_tag.setdefault(t, []).append(im)
+    assigned, method, used = {}, {}, set()
+    for m in meta['scenes']:
+        i, tag = m.get('index'), str(m.get('tag') or '')
+        mm = re.match(r'^(\d+)-(\d+)$', tag)
+        if not isinstance(i, int) or not mm or not (0 <= i < len(scenes)):
             continue
-        for im in images:
-            sc = score(names[i], im['slug'])
-            pairs.append((sc, i, im['name']))
-            by_s[i].append(sc)
-            by_i[im['name']].append(sc)
+        cands = [c for c in by_tag.get((int(mm.group(1)), int(mm.group(2))), []) if c['name'] not in used]
+        if cands:
+            if len(cands) > 1:
+                log('tag [' + tag + '] is on ' + str(len(cands)) + ' images, using the first one made')
+            assigned[i] = cands[0]
+            used.add(cands[0]['name'])
+            method[i] = 'tag'
+    log('tag matching placed ' + str(len(assigned)) + ' of ' + str(len(meta['scenes'])) + ' scenes')
 
-    def clear(lst, sc):
-        second = sorted(lst, reverse=True)[1] if len(lst) > 1 else 0.0
-        return sc - second >= MIN_MARGIN
+    if os.environ.get('FLOW_VISION_FALLBACK', '').strip().lower() == 'true':
+        left_s = sorted(m['index'] for m in meta['scenes'] if isinstance(m.get('index'), int) and m['index'] not in assigned)
+        left_i = [im for im in images if im['name'] not in used]
+        if left_s and left_i:
+            rows = [(i, str(scenes[i].get('narration') or ''), str(scenes[i].get('image_prompt') or '')) for i in left_s]
+            cand = []
+            for n, im in enumerate(left_i):
+                try:
+                    sc = vision_scores(im, rows, start_key=n)
+                    cand += [(v, i, im) for i, v in sc.items() if i in left_s]
+                except Exception as e:  # noqa
+                    log('vision failed for ' + im['name'] + ': ' + str(e)[:150])
+            for v, i, im in sorted(cand, key=lambda x: -x[0]):
+                if v >= VISION_MIN and i not in assigned and im['name'] not in used:
+                    assigned[i] = im
+                    used.add(im['name'])
+                    method[i] = 'gemini'
 
-    for sc, i, f in sorted(pairs, key=lambda x: -x[0]):
-        if sc < MIN_SCORE or i in assigned or f in used:
-            continue
-        if clear(by_s[i], sc) and clear(by_i[f], sc):
-            assigned[i] = f
-            used.add(f)
-            method[i] = 'filename'
-    log('filename step matched ' + str(len(assigned)) + ' scene(s)')
-
-    # 2) Gemini 3.1 vision, one request per remaining image, all keys tried on failure
-    left_s = sorted(i for i in submitted if i not in assigned)
-    left_i = [im for im in images if im['name'] not in used]
-    vision_failed = 0
-    if left_s and left_i:
-        rows = [(i, str(scenes[i].get('narration') or ''), names.get(i, ''), str(scenes[i].get('image_prompt') or '')) for i in left_s]
-        cand = []  # (score, scene, image name)
-        for n, im in enumerate(left_i):
-            try:
-                sc = vision_scores(im, rows, start_key=n)
-                log('vision scores for ' + im['name'] + ': ' + ', '.join(str(i + 1) + '=' + str(int(v)) for i, v in sorted(sc.items())))
-                for i, v in sc.items():
-                    if i in left_s:
-                        cand.append((v, i, im['name']))
-            except Exception as e:  # noqa
-                vision_failed += 1
-                log('vision failed for ' + im['name'] + ': ' + str(e)[:150])
-        for v, i, f in sorted(cand, key=lambda x: -x[0]):
-            if v < VISION_MIN or i in assigned or f in used:
-                continue
-            assigned[i] = f
-            used.add(f)
-            method[i] = 'gemini'
-
-    # 3) elimination: one scene and one image left, vision found nothing for it, and every scene produced an image
-    left_s = [i for i in sorted(submitted) if i not in assigned]
-    left_i = [im for im in images if im['name'] not in used]
-    if len(left_s) == 1 and len(left_i) == 1 and len(images) == len(submitted):
-        assigned[left_s[0]] = left_i[0]['name']
-        method[left_s[0]] = 'elimination'
-
-    result = dict((i, by_name[f]['path']) for i, f in assigned.items())
-    log('matched ' + str(len(result)) + ' of ' + str(len(scenes)) + ' scenes: ' +
-        ', '.join(str(i + 1) + '=' + assigned[i] + ' (' + method[i] + ')' for i in sorted(assigned)))
+    result = dict((i, im['path']) for i, im in assigned.items())
+    log('Flow images will be used for ' + str(len(result)) + ' of ' + str(len(scenes)) + ' scenes: ' +
+        ', '.join(str(i + 1) + '=' + assigned[i]['name'] + ' (' + method[i] + ')' for i in sorted(assigned)) +
+        ' | the other scenes use the normal providers')
     if work_dir:
         try:
             os.makedirs(work_dir, exist_ok=True)
@@ -334,6 +355,7 @@ def main():
     p.add_argument('--package', required=True)
     p.add_argument('--prompts', required=True)
     p.add_argument('--meta', required=True)
+    p.add_argument('--voice', default='flow-batch/prompts/' + VOICE_NAME)
     m = sub.add_parser('match')
     m.add_argument('--job', required=True)
     m.add_argument('--flow-dir', required=True)
