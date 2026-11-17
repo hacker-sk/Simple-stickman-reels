@@ -1,0 +1,5 @@
+# One set of pinned versions for every job that installs the Python packages (prepare and make), so both behave the same.
+# torch/torchaudio are installed from the CPU index first; these pins match that CPU build (the +cpu suffix is ignored by pip).
+torch==2.8.0
+torchaudio==2.8.0
+whisperx==3.7.4
