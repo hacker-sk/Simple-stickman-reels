@@ -11,6 +11,7 @@ prepare : package JSON -> 1) the voiceover is made FIRST (the same make_voice th
           timing source), shorts_flow_voice.wav (reused by the renderer, so the times stay true) and, when the word timing worked,
           shorts_flow_words.json (reused by the renderer so Whisper does not run a second time).
           Sets the step output flow=true ONLY when the voice and prompts worked; otherwise Flow is skipped.
+          The voice description is installed with pipeline/voice_patch.apply_voice(), the same text the make job uses when it makes the voice itself.
 match   : (used by render_hindi_flow.py) the Flow job saves each image as scene_NN.<ext> (NN = the NN-th Flow prompt). This gives each
           scene the image with its number. Older tag-in-file-name matching is kept as a fallback. A scene without a matching image gets
           no Flow image, so the normal providers (Cloudflare ...) make it. If the narration changed since prepare (hash differs), no
@@ -137,8 +138,8 @@ def load_scenes(raw):
 
 def make_voice_file(narration, path):
     """The renderer's own make_voice (Gemini, then ElevenLabs, then Fish). Returns (duration in seconds, the render_hindi module).
-    The voice is made natively by render_hindi.py from the VOICE payload of pipeline/run_shorts.py (voice description + delivery
-    style): nothing is patched in."""
+    The voice is made by render_hindi.py from the VOICE payload of pipeline/run_shorts.py (delivery style) and the voice description
+    installed by pipeline/voice_patch.py (the same text the make job uses when it makes the voice itself)."""
     work = os.path.abspath('flow_work')
     os.makedirs(work, exist_ok=True)
     os.environ['WORK_DIR'] = work
@@ -146,15 +147,25 @@ def make_voice_file(narration, path):
     try:
         from pipeline.run_shorts import VOICE
     except Exception:  # noqa
-        # no description or style here on purpose: render_hindi.py then uses its own native defaults (the same deep, warm baritone)
+        # no description or style here on purpose: voice_patch (below) supplies the description, render_hindi.py its native defaults
         VOICE = {'language': 'hi', 'gemini_voice': 'designed',
                  'gemini_models': ['gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts'],
                  'voice_id': 'ibbx9zDYGvLgtYzRbqqG', 'fish_voice_id': '6366ea69a97d41ada9eb855a64e56fba', 'fish_model': 's2.1-pro-free'}
+        try:
+            from pipeline import voice_patch as _vp
+            VOICE['gemini_style'] = _vp.STYLE
+        except Exception:  # noqa
+            pass
     os.environ['PAYLOAD'] = json.dumps(VOICE, ensure_ascii=False)
     stub = types.ModuleType('render_hindi_overlay')   # the overlay module is only needed for drawing, not for the voice
     stub.STATE = {}
     sys.modules.setdefault('render_hindi_overlay', stub)
     import render_hindi as rh
+    try:
+        from pipeline import voice_patch
+        voice_patch.apply_voice(rh)
+    except Exception as e:  # noqa
+        log('voice description patch not installed, render_hindi uses its own defaults: ' + str(e)[:150])
     rh.make_voice(narration, path)
     dur = rh.audio_duration(path)
     if dur > rh.MAX_VOICE_SECONDS:
