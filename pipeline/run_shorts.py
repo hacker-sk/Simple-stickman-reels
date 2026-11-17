@@ -15,8 +15,10 @@ Inputs (environment, set by .github/workflows/shorts.yml):
   MUSIC_VOLUME          optional, level of the background song (default 0.14, see music_picker.py)
 
 Voice: the VOICE payload below is what Gemini TTS gets, in BOTH places where the voiceover is made (the prepare job through
-pipeline/flow_images.py, and the make job through the render job file). gemini_voice_name + gemini_voice_desc describe the
-designed voice, gemini_style is the delivery style. render_hindi.py generates the narration natively from them.
+pipeline/flow_images.py, and the make job through the render job file). The voice text lives in pipeline/voice_patch.py (NAME, DESC,
+STYLE) and is installed into render_hindi by voice_patch.apply_voice() in both places, because render_hindi.py itself reads its own
+constants for the designed voice. gemini_style is the delivery style and travels in the payload. When prepare made the voice, the
+make job reuses it (and its word timing) instead of making it again.
 """
 import json
 import os
@@ -28,7 +30,7 @@ import traceback
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from pipeline import buffer, image_prompts, package, script, styles, topics  # noqa: E402
+from pipeline import buffer, image_prompts, package, script, styles, topics, voice_patch  # noqa: E402
 
 OUT_DIR = os.environ.get('OUT_DIR', 'output')
 WORK_DIR = os.environ.get('WORK_DIR', 'work')
@@ -37,10 +39,10 @@ RENDER_TIMEOUT = 80 * 60
 VOICE = {
     'language': 'hi', 'gemini_voice': 'designed',
     # the voice Gemini designs (created once per API key, looked up by this name afterwards)
-    'gemini_voice_name': 'Deep warm Hindi baritone narrator v2',
-    'gemini_voice_desc': 'Deep, warm Indian male baritone with crisp, clear Devanagari pronunciation. Rich chest resonance, close-mic intimacy, and high studio loudness.',
+    'gemini_voice_name': voice_patch.NAME,
+    'gemini_voice_desc': voice_patch.DESC,
     # how it delivers every line
-    'gemini_style': 'Expressive, emotionally gripping storytelling at a steady, engaging pace. Read continuous, unpunctuated Devanagari text smoothly, with only brief, natural micro-pauses between complete thoughts. No long or frequent pauses. Stress key emotions and impactful words with stronger projection, chest weight, and dynamic pitch shifts, without slowing down or dragging.',
+    'gemini_style': voice_patch.STYLE,
     'gemini_models': ['gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts'],
     'voice_id': 'ibbx9zDYGvLgtYzRbqqG', 'tts_model': 'eleven_multilingual_v2',
     'fish_voice_id': '6366ea69a97d41ada9eb855a64e56fba', 'fish_model': 's2.1-pro-free',
