@@ -9,8 +9,10 @@ Inputs (environment, set by .github/workflows/shorts.yml):
   PACKAGE               finished package JSON from Claude chat (title, description, mood, hook, scenes with narration +
                         image_prompt, see pipeline/package.py); skips topic, script and image-prompt steps
   SCRIPT_MODE           auto | truth | story   (scheduled runs only)
-  ART_STYLE             painterly (default) | sepia | night | golden
+  ART_STYLE             random (default) | indian_storybook | sketchbook_doodle | whimsical_indian | editorial_pencil |
+                        stickman_sepia | village_storybook
   IMAGE_PROVIDER_ORDER  optional, copied to HINDI_IMAGE_ORDER for the renderer
+  MUSIC_VOLUME          optional, level of the background song (default 0.14, see music_picker.py)
 """
 import json
 import os
@@ -30,7 +32,7 @@ RENDERER = os.environ.get('RENDER_SCRIPT', os.path.join(ROOT, 'render_hindi.py')
 RENDER_TIMEOUT = 80 * 60
 VOICE = {
     'language': 'hi', 'gemini_voice': 'designed',
-    'gemini_style': 'A natural, youthful Indian male in his mid-20s speaking fluent Hindi, with a slightly nasal, soft husky vocal texture. A casual, friendly, expressive storytelling voice with a subtle playful tone, conversational and slightly laid-back, with natural pitch variation. Not a formal newsreader, no excessive bass.',
+    'gemini_style': 'A bright, clear, confident young Indian male reel narrator speaking fluent Hindi, with a full, warm, forward voice, strong vocal projection, crisp consonants and an engaging, high-energy storytelling tone. Fast, punchy, flowing pace, about 1.25 times faster than a relaxed reading, with short natural breaths and no long pauses (gaps between sentences under half a second). Keep the emotion in the tone and pitch variation, never by slowing down or stretching words. Never slow, sleepy, dull, muffled, soft or husky.',
     'gemini_models': ['gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts'],
     'voice_id': 'ibbx9zDYGvLgtYzRbqqG', 'tts_model': 'eleven_multilingual_v2',
     'fish_voice_id': '6366ea69a97d41ada9eb855a64e56fba', 'fish_model': 's2.1-pro-free',
