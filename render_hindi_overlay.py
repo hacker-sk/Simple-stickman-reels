@@ -4,7 +4,7 @@ adapted to the Hindi (Devanagari) text and to the red background with the framed
 - load_layout: full-screen 9:16 background, the frame lines are detected and the picture window is the whole
   framed square plus a small overscan, so the pictures hide the lines and nothing shows outside the square.
 - HookOverlay: Hindi hook above the square (white text, focus word red with glow, black outline).
-- CaptionTrack: short caption lines near the bottom of the square, all words white, the spoken word in one highlight colour.
+- CaptionTrack: short caption lines centred on the bottom edge of the square (half inside the square, half on the background), all words white, the spoken word in one highlight colour.
 - render_video: English style crossfade with a small zoom, slower and smoother image motion, fade to black at the end.
 If the background file is missing or its frame is not found, setup() returns None and render_hindi.py keeps its old layout.
 """
@@ -45,7 +45,7 @@ OUTLINE = (0, 0, 0)
 # same highlight colours as the English caption palette (yellow, blue); black is skipped because it is invisible here
 HIGHLIGHTS = [(255, 214, 0), (30, 144, 255)]
 CAPTION_SIZES = (88, 80, 72, 64, 56)
-CAPTION_FROM_BOTTOM = 45        # centre of the last caption line, px above the bottom of the picture window (English: 150)
+CAPTION_FROM_BOTTOM = 0         # centre of the caption block, px above the bottom edge of the picture window; 0 = centred on the edge (half in the square, half on the background). Nudge by a few px if the text looks off-centre
 
 
 def _log(*a):
@@ -296,8 +296,9 @@ def _latin_font_path():
 
 
 class CaptionTrack:
-    """Short caption lines (max 3 words) near the bottom of the square. All words are white, the word being spoken
-    is in the video's one highlight colour. Every line is fitted inside the picture window, never outside it."""
+    """Short caption lines (max 3 words) centred on the bottom edge of the square: half inside the picture, half on the
+    background below. All words are white, the word being spoken is in the video's one highlight colour. Every line is
+    fitted to the picture width, and the whole caption block is centred vertically on the bottom edge of the square."""
 
     def __init__(self, words):
         self.fp = CFG['font']()
@@ -382,8 +383,8 @@ class CaptionTrack:
                 active = k
         W = CFG['W']
         line_h = int(size * 1.3)
-        last_y = CFG['CAP_LAST_Y']
-        y0 = last_y - (len(lines) - 1) * line_h
+        last_y = CFG['CAP_LAST_Y']                       # the bottom edge of the square (minus CAPTION_FROM_BOTTOM)
+        y0 = last_y - (len(lines) - 1) * line_h // 2     # centre the whole caption block on that line
         for li, line in enumerate(lines):
             tw = sum(widths[k] for k in line) + space * (len(line) - 1)
             x = (W - tw) / 2
