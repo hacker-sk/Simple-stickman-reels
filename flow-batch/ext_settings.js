@@ -1,55 +1,54 @@
 const fs = require("fs");
 const path = require("path");
 
-// Turns OFF the ZAPI FLOW extension's serial-number option (the running number it adds to file names).
-// Looks at every checkbox / switch in the side panel, matches the nearby label text, and unticks the ones that are ON.
-// Best effort: never throws. Writes debug/02d-serial-toggle.json (what it saw and did) so the result is visible in the artifact.
-const WANT_RE = /serial|numbering|sequen|counter|number (the )?(file|image|name)|file ?name.*number|prefix.*number|index/i;
-const SKIP_RE = /number of|count\b|delay|retry|wait|second|max|limit|prompts?\b/i;
-
-async function scan(ui) {
-  return ui.evaluate(({ want, skip }) => {
-    const wantRe = new RegExp(want, "i");
-    const skipRe = new RegExp(skip, "i");
-    document.querySelectorAll("details").forEach((d) => { d.open = true; });
-    const els = [...document.querySelectorAll('input[type="checkbox"], [role="switch"]')];
-    return els.map((el, i) => {
-      const lab = el.closest("label") || (el.id && document.querySelector('label[for="' + el.id + '"]')) || el.parentElement;
-      const text = String((lab && lab.innerText) || el.getAttribute("aria-label") || el.id || el.name || "").replace(/\s+/g, " ").trim().slice(0, 120);
-      const checked = el.type === "checkbox" ? el.checked : el.getAttribute("aria-checked") === "true";
-      return { i, text, id: el.id || "", checked, match: wantRe.test(text + " " + el.id + " " + (el.name || "")) && !skipRe.test(text) };
-    });
-  }, { want: WANT_RE.source, skip: SKIP_RE.source });
+// Turns OFF ONLY the ZAPI FLOW row "Include serial number in filename". Nothing else is touched
+// (Auto download generated images, Character Consistency, Agent mode all stay as they are).
+// How: find the row by its text, take the single toggle inside that row, click it only if it is ON, then re-read it.
+// Best effort: never throws. Writes debug/02d-serial-toggle.json and a screenshot so the result is visible in the artifact.
+async function rowState(ui) {
+  return ui.evaluate(() => {
+    const isToggle = (e) => e.matches('input[type="checkbox"], [role="switch"], [aria-checked]');
+    const state = (el) => (el.type === "checkbox" ? el.checked : el.getAttribute("aria-checked") === "true");
+    // smallest element whose own text is the serial number label
+    const cands = [...document.querySelectorAll("body *")].filter((e) => /include serial number in filename/i.test(e.textContent || "") && (e.textContent || "").length < 80);
+    if (!cands.length) return { found: false };
+    const label = cands.sort((a, b) => a.textContent.length - b.textContent.length)[0];
+    // walk up until the ancestor holds exactly one toggle: that is this row's switch
+    let row = label;
+    for (let k = 0; k < 6 && row; k++, row = row.parentElement) {
+      const t = [...row.querySelectorAll('input[type="checkbox"], [role="switch"], [aria-checked]')];
+      if (t.length === 1) {
+        const el = t[0];
+        el.setAttribute("data-serial-toggle", "1");
+        return { found: true, text: label.textContent.trim(), checked: state(el), tag: el.tagName.toLowerCase(), type: el.type || "" };
+      }
+      if (t.length > 1) break;
+    }
+    // custom switch without input/aria: take the last styled child of the row
+    row = label.parentElement && label.parentElement.parentElement ? label.parentElement.parentElement : label.parentElement;
+    const sw = row && row.querySelector('[class*="toggle"], [class*="switch"], [class*="slider"]');
+    if (sw) { sw.setAttribute("data-serial-toggle", "1"); return { found: true, text: label.textContent.trim(), checked: null, tag: "custom", type: "" }; }
+    return { found: false, text: label.textContent.trim() };
+  });
 }
 
 async function turnOffSerial(ui, debugDir) {
-  const report = { found: [], changed: [], error: null };
+  const report = { before: null, after: null, clicked: false, error: null };
   try {
-    let list = await scan(ui);
-    if (!list.some((c) => c.match)) {
-      // the option may sit in a collapsed section: open the settings headers and look again
-      for (const re of [/generation settings/i, /auto ?download/i, /settings/i, /file ?name|naming/i]) {
-        await ui.getByText(re).first().click({ timeout: 1500 }).catch(() => {});
-      }
-      await ui.waitForTimeout(600);
-      list = await scan(ui);
-    }
-    report.found = list;
-    for (const c of list.filter((x) => x.match && x.checked)) {
-      const done = await ui.evaluate((idx) => {
-        const els = [...document.querySelectorAll('input[type="checkbox"], [role="switch"]')];
-        const el = els[idx];
-        if (!el) return false;
-        el.click();
-        return el.type === "checkbox" ? !el.checked : el.getAttribute("aria-checked") !== "true";
-      }, c.i);
-      report.changed.push({ text: c.text, nowOff: done });
-      console.log("Extension serial number option '" + c.text + "':", done ? "turned OFF" : "click did not change it");
-    }
-    if (!report.changed.length) {
-      const already = list.filter((x) => x.match && !x.checked);
-      console.log(already.length ? "Extension serial number option already OFF: " + already.map((x) => x.text).join(" | ")
-        : "Extension serial number option NOT found (see debug/02d-serial-toggle.json for every toggle seen)");
+    report.before = await rowState(ui);
+    if (!report.before.found) {
+      console.log("Serial number option NOT found in the extension panel (see debug/02d-serial-toggle.png)");
+    } else if (report.before.checked === false) {
+      console.log("Serial number option already OFF");
+    } else {
+      // checked === true, or unknown for a custom switch (screenshot decides): click once
+      await ui.locator('[data-serial-toggle="1"]').first().click({ timeout: 3000, force: true });
+      report.clicked = true;
+      await ui.waitForTimeout(500);
+      report.after = await rowState(ui);
+      const off = report.after.found && report.after.checked === false;
+      console.log("Serial number option:", off ? "turned OFF" : "clicked, state now " + JSON.stringify(report.after.checked));
+      // a custom switch that reports no state must not be toggled twice: leave it as clicked
     }
   } catch (e) {
     report.error = String(e && e.message).slice(0, 200);
