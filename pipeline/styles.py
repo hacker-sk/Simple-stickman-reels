@@ -2,8 +2,8 @@
 
 Six hand-drawn 2D storybook styles. When no style is chosen (no art_style in the chat package and the workflow input
 art_style left on random or empty, which is also the case for scheduled runs), one of them is picked at random.
-The full style description of each style is kept word for word in 'look'. The image model only reads about the first
-250 word pieces of a prompt, so the prompt writer ends every prompt with a short style sentence built from that wording.
+Images come from Google Flow, so there is no prompt length problem: the full style description of each style (kept word
+for word in 'look') is copied unchanged at the end of every image prompt.
 """
 import random
 
@@ -15,7 +15,7 @@ def J(a):
 STYLES = {}
 
 
-def _add(key, name, look, character, environment, colour, ending):
+def _add(key, name, look, character, environment, colour):
     STYLES[key] = {
         'name': name,
         'open': '',
@@ -23,11 +23,11 @@ def _add(key, name, look, character, environment, colour, ending):
         'look': look,
         'rules': J([
             'THIS VIDEO USES THE ' + name.upper() + ' STYLE described above. Every image follows it exactly.',
-            'PROMPT LENGTH: write one English image prompt of 90 to 120 words for every chunk. The image model reads only about the first 250 small word pieces of a prompt, so put the subject and its look first and keep the rest tight.',
+            'PROMPT FORMAT: every prompt has two parts. Part 1 is the scene description, 70 to 110 words, with the subject and its look first. Part 2 is the full ART STYLE description from above, copied word for word with no changes, no shortening and no rewording, as the last part of the prompt. Never write any other style wording.',
             'CHARACTER LOOK: ' + character + ' A fixed appearance means age, face, hair, build, clothing, colours and one distinguishing feature. Every recurring character keeps the same appearance, written with the same words every time; tell different characters apart by clothing colour and one distinguishing item. Emotion comes from the eyes, brows, posture and gesture.',
             'ENVIRONMENTS: ' + environment + ' Use the same recurring places and objects in the same words throughout the video. When the phrase is about an object, an animal, a place, nature, time or an idea, show that directly with no person.',
             'COLOUR AND LIGHT: ' + colour + ' Show mood through light, sky, shadow length and posture, never by changing the art style.',
-            'ART STYLE IN EVERY PROMPT: because the image model knows nothing else, end every prompt with one short style sentence of about 25 to 35 words, written in your own words from the ART STYLE description above and using its key wording (outlines, textures, palette, lighting), for example: "' + ending + '" Never mention or mix in any other art style, and never ask for photorealism, 3D, glossy digital or flat vector looks. Never include readable words, letters, numbers, captions, logos or watermarks.',
+            'Never mention or mix in any other art style, and never ask for photorealism, 3D, glossy digital or flat vector looks. Never include readable words, letters, numbers, captions, logos or watermarks.',
         ]),
     }
 
@@ -39,7 +39,6 @@ _add(
     'Draw expressive simple characters with anime-inspired cartoon faces, bold clean dark outlines and soft cel-shading, in simple Indian clothing with believable folds (kurta, saree, dhoti, shawl; a turban only when the story needs it), with consistent proportions.',
     'Make the environments richly detailed rural Indian settings (village lanes, fields, mud huts, wells, temples, markets, tea stalls) unless the narration points elsewhere, with a layered foreground, middle ground and background.',
     'Warm earthy colour palette with soft cel-shading, subtle hand-painted textures and beautiful cinematic lighting.',
-    'Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon look, bold clean dark outlines, soft cel-shading, warm earthy palette, subtle hand-painted texture, beautiful cinematic lighting.',
 )
 
 _add(
@@ -49,7 +48,6 @@ _add(
     'Draw simple expressive stick-figure characters: a round head with a simple expressive face, thin stick limbs and bold irregular black ink outlines, plus ONE fixed clothing item in a fixed colour.',
     'Make the environments detailed natural settings (fields, forests, rivers, hills, village paths, huts, trees) with loose hand-drawn linework and highly detailed backgrounds, unless the narration points elsewhere.',
     'Warm earthy tones with watercolor and colored-pencil textures, subtle paper grain, golden-hour cinematic lighting and soft atmospheric shading.',
-    'Hand-drawn sketchbook-doodle storybook illustration, loose irregular black ink outlines, watercolor and colored-pencil textures, subtle paper grain, warm earthy tones, golden-hour cinematic light.',
 )
 
 _add(
@@ -59,7 +57,6 @@ _add(
     'Draw cute, simple, rounded characters with expressive faces, bold black sketch outlines and clean ink linework, in everyday Indian clothing.',
     'Make the environments richly detailed everyday Indian settings (homes, courtyards, streets, markets, tea stalls, schools, railway stations, rooftops) unless the narration points elsewhere, with balanced cinematic composition.',
     'Warm earthy pastel colours with soft watercolor and colored-pencil textures, subtle paper grain and soft natural lighting.',
-    'Whimsical 2D hand-drawn Indian cartoon, cute rounded characters, bold black sketch outlines, soft watercolor and colored-pencil texture, warm earthy pastels, subtle paper grain, soft natural light.',
 )
 
 _add(
@@ -69,7 +66,6 @@ _add(
     'Draw expressive cartoon characters with slightly anime-inspired faces and delicate imperfect pencil-and-ink outlines, with sketchy cross-hatching and soft watercolor shading, in believable Indian clothing.',
     'Make the backgrounds detailed and realistic with clear architectural perspective (old buildings, streets, rooms, courtyards, stations, markets) in believable Indian settings unless the narration points elsewhere.',
     'Muted warm beige and earthy pastel palette, soft diffused lighting, subtle paper texture and an emotional storytelling atmosphere.',
-    '2D hand-drawn editorial storybook illustration, delicate imperfect pencil-and-ink outlines, sketchy cross-hatching, soft watercolor shading, muted beige and earthy pastels, subtle paper texture, soft diffused light.',
 )
 
 _add(
@@ -79,7 +75,6 @@ _add(
     'Draw minimalist round-headed stickman characters: a round head with a simple expressive face, thin black stick limbs and bold clean black ink outlines, plus one or two clothing details in a bright accent colour that stands out against the muted scene.',
     'Make the environments detailed sketch-style Indian settings with intricate pencil linework and detailed crowded backgrounds (streets, markets, villages, fairs, stations) unless the narration points elsewhere.',
     'Muted beige, sepia and earthy tones with selective bright accents on the characters, warm cinematic daylight and a slightly grainy paper texture.',
-    '2D hand-drawn stickman cartoon, round-headed characters with thin black limbs, bold ink outlines, pencil cross-hatching, watercolor texture, muted sepia and earthy tones with bright character accents, grainy paper.',
 )
 
 _add(
@@ -89,7 +84,6 @@ _add(
     'Draw cute cartoon characters with rounded faces, expressive features, slightly childlike proportions and clean bold black ink outlines, in simple Indian village clothing.',
     'Make the environments traditional Indian rural settings and architecture (mud and brick houses, thatched roofs, courtyards, wells, farm fields, village lanes, banyan trees) unless the narration points elsewhere, with beautifully detailed backgrounds.',
     'Warm muted beige and earthy pastel palette with detailed pencil-sketch linework, subtle paper grain and gentle natural sunlight.',
-    'Charming 2D hand-drawn Indian village storybook illustration, rounded childlike characters, bold black ink outlines, pencil-sketch linework, watercolor texture, muted beige earthy pastels, gentle sunlight, paper grain.',
 )
 
 
