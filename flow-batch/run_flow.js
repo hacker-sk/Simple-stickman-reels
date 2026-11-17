@@ -7,6 +7,7 @@ const { chromium } = require("playwright");
 const { applyFlowSettings, resolveAspect, matchesAspect } = require("./flow_helpers");
 const { parseDoneMessage, isQueueComplete, detectOverGeneration, computeBatchStatus, validateModel, uniqueName } = require("./flow_utils");
 const { turnOffSerial } = require("./ext_settings");
+const { createMediaTracker } = require("./flow_match");
 
 const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8"));
 const FLOW_URL = process.env.FLOW_URL || cfg.flowUrl;
@@ -24,6 +25,7 @@ fs.mkdirSync(FINAL_DIR, { recursive: true });
 fs.mkdirSync(DEBUG_DIR, { recursive: true });
 
 const NL = String.fromCharCode(10);
+let TRACKER = null; // prompt -> Flow media UUID tracker (set once the prompts are loaded)
 
 // Flow settings: config.json defaults, overridden by FLOW_MODEL / FLOW_ASPECT / FLOW_COUNT (set from workflow inputs).
 const WANT = Object.assign({ agent: "off", model: "Nano Banana Lite", aspect: "portrait", count: 1 }, cfg.flowSettings || {});
@@ -182,10 +184,19 @@ function listFiles(dir, out) {
   return out;
 }
 
-// Collect complete, valid images from every place Chrome may have written them (subfolders included).
+function clearDir(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const e of fs.readdirSync(dir)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });
+}
+
+// Collect complete, valid images from every place Chrome may have written them (subfolders included). Safe to call more than once.
 // Images with the requested shape go to downloads/final; wrong-shaped ones go to downloads/rejected and the rest of the batch is kept.
-// Files keep the descriptive name ZAPI FLOW's labeling gave them (capture timestamp prefix removed; -2, -3 only on a name clash).
+// When the prompt->media mapping is available, each image whose filename carries a known Flow media UUID is saved as scene_NN.<ext>
+// (NN = prompt number); any other accepted image is saved as unmatched_<name> so it can never be mistaken for a scene.
+// Without a mapping the old behaviour applies (descriptive names, capture timestamp prefix removed).
 function collectImages() {
+  clearDir(FINAL_DIR);
+  clearDir(REJECTED_DIR);
   const files = [];
   listFiles(DL_DIR, files);
   listFiles(path.join(os.homedir(), "Downloads"), files);
@@ -195,6 +206,8 @@ function collectImages() {
   const usedRejected = new Set();
   const items = [];
   const skipped = [];
+  const sceneFile = {};
+  const mapped = TRACKER ? TRACKER.hasMapping() : false;
   let accepted = 0;
   let rejected = 0;
   for (const full of files) {
@@ -209,13 +222,37 @@ function collectImages() {
     const size = imageSize(buf);
     const ok = matchesAspect(size, ASP);
     let name;
-    if (ok) { accepted += 1; name = uniqueName(f, ext, usedFinal); fs.copyFileSync(full, path.join(FINAL_DIR, name)); }
-    else { rejected += 1; fs.mkdirSync(REJECTED_DIR, { recursive: true }); name = uniqueName(f, ext, usedRejected); fs.copyFileSync(full, path.join(REJECTED_DIR, name)); }
-    items.push({ file: (ok ? "final/" : "rejected/") + name, original_name: f.replace(/^\d{10,}-/, ""), bytes: buf.length, width: size ? size.w : null, height: size ? size.h : null, matches_requested_ratio: size ? ok : null });
+    let scene = null;
+    if (ok) {
+      accepted += 1;
+      const hit = mapped ? TRACKER.matchFile(f) : null;
+      if (hit && !sceneFile[hit.index]) {
+        name = "scene_" + String(hit.index).padStart(2, "0") + ext;
+        scene = hit.index;
+        sceneFile[hit.index] = { file: "final/" + name, uuid: hit.uuid };
+      } else if (mapped) {
+        name = "unmatched_" + uniqueName(f, ext, usedFinal);
+      } else {
+        name = uniqueName(f, ext, usedFinal);
+      }
+      fs.copyFileSync(full, path.join(FINAL_DIR, name));
+    } else {
+      rejected += 1;
+      fs.mkdirSync(REJECTED_DIR, { recursive: true });
+      name = uniqueName(f, ext, usedRejected);
+      fs.copyFileSync(full, path.join(REJECTED_DIR, name));
+    }
+    items.push({ file: (ok ? "final/" : "rejected/") + name, original_name: f.replace(/^\d{10,}-/, ""), scene, bytes: buf.length, width: size ? size.w : null, height: size ? size.h : null, matches_requested_ratio: size ? ok : null });
   }
+  const total = TRACKER ? TRACKER.count : 0;
+  const scenes = [];
+  for (let i = 1; i <= total; i++) scenes.push({ scene: i, file: sceneFile[i] ? sceneFile[i].file : null, uuid: sceneFile[i] ? sceneFile[i].uuid : null });
+  const missingScenes = mapped ? scenes.filter((s) => !s.file).map((s) => s.scene) : [];
   fs.writeFileSync(path.join(DEBUG_DIR, "downloads-listing.json"), JSON.stringify({ items, skipped }, null, 2));
   console.log("Valid images:", accepted + rejected, "| accepted:", accepted, "| wrong ratio:", rejected, "| skipped:", skipped.length);
-  return { accepted, rejected, items, skipped };
+  if (mapped) console.log("Scene matching: " + (total - missingScenes.length) + " of " + total + " scenes matched by media UUID | missing: " + (missingScenes.join(",") || "none"));
+  else console.log("::warning::No prompt->media mapping captured; images keep Flow's names and cannot be matched to scenes (see debug/media-map.json and media-samples.json)");
+  return { accepted, rejected, items, skipped, scenes, missingScenes, mapped };
 }
 
 async function dumpUiText(ui, name) {
@@ -230,6 +267,7 @@ async function dumpUiText(ui, name) {
   if (!prompts.length) throw new Error("No prompts found in " + PROMPTS_FILE);
   console.log("Prompts loaded:", prompts.length);
   console.log("Wanted Flow settings:", JSON.stringify(WANT), "-> ratio", ASP.label, "| model check:", JSON.stringify(MODEL_CHECK));
+  TRACKER = createMediaTracker(prompts, DEBUG_DIR);
 
   const context = await chromium.launchPersistentContext(path.join(__dirname, "profile"), {
     headless: false,
@@ -238,6 +276,7 @@ async function dumpUiText(ui, name) {
     downloadsPath: RAW_DIR,
     args: ["--no-sandbox", "--disable-extensions-except=" + EXT_DIR, "--load-extension=" + EXT_DIR]
   });
+  context.on("response", TRACKER.onResponse);
 
   const hook = (pg) => pg.on("download", async (d) => {
     const target = path.join(DL_DIR, Date.now() + "-" + d.suggestedFilename());
@@ -323,7 +362,7 @@ async function dumpUiText(ui, name) {
   await ui.screenshot({ path: path.join(DEBUG_DIR, "02-ui.png") });
   await dumpUiText(ui, "02-ui-text.txt");
 
-  // Turn OFF the extension's serial number option (best effort; result is written to debug/02d-serial-toggle.json).
+  // Serial number OFF + auto download ON, verified (result is written to debug/02d-serial-toggle.json).
   await turnOffSerial(ui, DEBUG_DIR);
 
   // Diagnostic only: record the extension's own generation-settings controls, then close the section again.
@@ -417,9 +456,16 @@ async function dumpUiText(ui, name) {
   first.forEach((r, i) => { if (state[i]) { state[i].state = r.state; state[i].ui_status = r.ui_status; } });
   const parsedOk = first.length === prompts.length;
 
-  // Retry only prompts the extension explicitly marked FAILED, and only when the queue was read cleanly.
+  // Let the last downloads land BEFORE deciding which scenes have no usable image.
+  await flow.waitForTimeout(cfg.settleSeconds * 1000);
+  let retried = false;
+
+  // Retry prompts the extension marked FAILED AND prompts marked done whose scene has no usable image
+  // (only judged when the prompt->media mapping was captured), only when the queue was read cleanly.
   for (let pass = 1; pass <= RETRY_PASSES && parsedOk; pass++) {
-    const redo = state.map((s, i) => ({ s, i })).filter((x) => x.s.state === "GENERATION_FAILED");
+    const cur = collectImages();
+    const miss = new Set(cur.missingScenes);
+    const redo = state.map((s, i) => ({ s, i })).filter((x) => x.s.state === "GENERATION_FAILED" || miss.has(x.i + 1));
     if (!redo.length || Date.now() > deadline) break;
     console.log("Retry pass " + pass + " for prompts:", redo.map((x) => x.i + 1).join(","));
     try {
@@ -429,6 +475,7 @@ async function dumpUiText(ui, name) {
       await ui.locator(cfg.selectors.startButton).click();
       await flow.bringToFront();
       await flow.waitForTimeout(8000);
+      retried = true;
       done = (await waitForCompletion(before, redoPrompts.length, redoPrompts)) && done;
       const txt = await dumpUiText(ui, "05-retry" + pass + "-ui-end-text.txt");
       await ui.screenshot({ path: path.join(DEBUG_DIR, "05-retry" + pass + "-ui-end.png") });
@@ -442,11 +489,12 @@ async function dumpUiText(ui, name) {
     }
   }
 
-  await flow.waitForTimeout(cfg.settleSeconds * 1000);
+  if (retried) await flow.waitForTimeout(cfg.settleSeconds * 1000);
   try { if (/\/project\//.test(flow.url())) saveCookies(await context.cookies()); } catch (e) {}
   await context.close();
 
   const img = collectImages();
+  TRACKER.writeDebug();
   EVID.results = prompts.map((p, i) => ({ index: i + 1, prompt: p.slice(0, 80), state: state[i].state, ui_status: state[i].ui_status, attempts: state[i].attempts }));
   const count = (s) => EVID.results.filter((r) => r.state === s).length;
   const expectedImages = prompts.length * WANT.count;
@@ -459,6 +507,7 @@ async function dumpUiText(ui, name) {
     failedPrompts, unfinishedPrompts: unfinished, overGenerated: over.over, extraImages: over.extra,
     extensionDone: done, settingsVerified: !!EVID.flow.settings.verified
   });
+  if (img.mapped && img.missingScenes.length) verdict.reasons.push("scenes without an image: " + img.missingScenes.join(","));
   EVID.summary = {
     batch_status: verdict.status, status_reasons: verdict.reasons,
     prompts: prompts.length, wanted: { model: WANT.model, ratio: ASP.label, per_prompt: WANT.count },
@@ -466,10 +515,11 @@ async function dumpUiText(ui, name) {
     extension_done: done, completion_via: completionVia || null,
     generation_completed: completed, generation_failed: failedPrompts, generation_unfinished: unfinished,
     expected_images: expectedImages, images_accepted: img.accepted, images_wrong_ratio: img.rejected,
-    over_generated: over.over, extra_images: over.extra
+    over_generated: over.over, extra_images: over.extra,
+    mapping_available: img.mapped, missing_scenes: img.missingScenes
   };
   writeEvidence();
-  fs.writeFileSync(path.join(FINAL_DIR, "manifest.json"), JSON.stringify({ generated_at: new Date().toISOString(), batch_status: verdict.status, status_reasons: verdict.reasons, summary: EVID.summary, prompts: EVID.results, images: img.items, note: "Images keep the descriptive names ZAPI FLOW labeling gave them (see original_name). Image-to-prompt order is not tracked." }, null, 2));
+  fs.writeFileSync(path.join(FINAL_DIR, "manifest.json"), JSON.stringify({ generated_at: new Date().toISOString(), batch_status: verdict.status, status_reasons: verdict.reasons, summary: EVID.summary, prompts: EVID.results, scenes: img.scenes, missing_scenes: img.missingScenes, images: img.items, note: "scene_NN.* = image for prompt NN, matched by Flow media UUID. unmatched_* = accepted images that map to no scene. Scenes listed in missing_scenes need the Cloudflare fallback. When mapping_available is false, images keep Flow's names and scene order is unknown." }, null, 2));
   console.log('PROMPT_RESULTS', JSON.stringify(EVID.results.map((r) => r.index + ':' + r.state)));
   console.log('EVIDENCE_SUMMARY', JSON.stringify(EVID.summary), 'http_errors=' + EVID.http.length, 'console_errors=' + EVID.console.length, 'failed_requests=' + EVID.requestFailed.length);
   console.log("RESULT prompts=" + prompts.length + " expected_images=" + expectedImages + " accepted=" + img.accepted + " wrong_ratio=" + img.rejected + " extra=" + over.extra + " extension_done=" + done);
@@ -481,7 +531,7 @@ async function dumpUiText(ui, name) {
       "| Prompts | " + s.prompts + " |", "| Wanted | " + s.wanted.model + ", " + s.wanted.ratio + ", x" + s.wanted.per_prompt + " |",
       "| Settings verified | " + s.settings_verified + " (" + s.settings_verdict + ") |", "| Generation completed / failed / unfinished | " + s.generation_completed + " / " + s.generation_failed + " / " + s.generation_unfinished + " |",
       "| Images kept (right ratio) | " + s.images_accepted + " of " + s.expected_images + " expected |", "| Images rejected (wrong ratio) | " + s.images_wrong_ratio + " (in downloads/rejected) |",
-      "| Extra images beyond request | " + s.extra_images + " |", ""].join(NL);
+      "| Extra images beyond request | " + s.extra_images + " |", "| Scene mapping | " + (s.mapping_available ? "UUID match, missing scenes: " + (s.missing_scenes.join(",") || "none") : "NOT available") + " |", ""].join(NL);
     try { fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + NL); } catch (e) {}
   }
   if (verdict.status === "FAILED") { console.log("::error::Batch FAILED - " + verdict.reasons.join("; ")); process.exit(1); }
