@@ -6,9 +6,12 @@ name: Hindi Shorts
 # Scheduled run: every 3.5 hours between 10:00 and 22:00 IST. It only runs when the repository variable
 # SHORTS_SCHEDULE_ENABLED is "true", so it stays off until the n8n schedule has been switched off.
 #
-# Google Flow images (package runs only): the "flow" job generates the scene images with Google Flow (ZAPI FLOW extension,
-# same setup as flow-batch.yml, 1 hour cap) and uploads them as the "flow-images" artifact. The "make" job always runs afterwards:
-# it matches the Flow images to the scenes, and the normal providers (HINDI_IMAGE_ORDER) make any missing image.
+# Google Flow images (package runs only): the "flow" job first makes the voiceover and works out when every scene starts, puts that
+# start time at the very beginning of each image prompt as [minute-second] (e.g. [0-5], [1-7]), then generates the images with
+# Google Flow (ZAPI FLOW extension, same setup as flow-batch.yml, 1 hour cap) and uploads images + voice as the "flow-images" artifact.
+# The "make" job always runs afterwards: it reuses that voice, matches each Flow image to its scene by the tag in the file name,
+# and the normal providers (HINDI_IMAGE_ORDER, Cloudflare ...) make every image that is missing or could not be matched.
+# If the voice step fails, Flow is skipped and the normal providers make all images.
 # Switch Flow off with the repository variable FLOW_ENABLED = "false". Optional variable FLOW_MODEL (default Nano Banana Lite).
 # Needs the same FLOW_COOKIES_B64 secret and FLOW_PROJECT_URL variable as flow-batch.yml; without them Flow is skipped.
 
@@ -74,7 +77,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Prepare Flow prompts
+      - name: Prepare Flow prompts (voice first, then time-tagged prompts)
         id: prep
         env:
           PACKAGE_INPUT: ${{ inputs.package }}
@@ -86,6 +89,8 @@ jobs:
           GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
           GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
           GEMINI_API_KEY_6: ${{ secrets.GEMINI_API_KEY_6 }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
         run: |
           if [ -z "$FLOW_COOKIES_B64" ] || [ -z "$FLOW_URL" ]; then
             echo "::warning::FLOW_COOKIES_B64 secret or FLOW_PROJECT_URL variable is missing, Flow is skipped"
@@ -96,9 +101,14 @@ jobs:
           else
             printf '%s' "$PACKAGE_INPUT" > /tmp/package.json
           fi
-          pip install requests
+          if [ -s /tmp/package.json ]; then
+            # ffmpeg is needed to make and measure the voiceover
+            sudo apt-get update -y && sudo apt-get install -y ffmpeg || echo "::warning::ffmpeg install failed, the voice step will fail and Flow is skipped"
+          fi
+          pip install requests pillow
           python pipeline/flow_images.py prepare --package /tmp/package.json \
             --prompts flow-batch/prompts/shorts_flow.json --meta flow-batch/prompts/shorts_flow_meta.json \
+            --voice flow-batch/prompts/shorts_flow_voice.wav \
             || echo "::warning::Flow prompt preparation failed, Flow is skipped"
 
       - uses: actions/setup-node@v4
@@ -169,6 +179,7 @@ jobs:
           path: |
             flow-batch/downloads/final
             flow-batch/prompts/shorts_flow_meta.json
+            flow-batch/prompts/shorts_flow_voice.wav
           if-no-files-found: ignore
           retention-days: 3
 
