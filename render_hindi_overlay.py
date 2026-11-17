@@ -71,6 +71,28 @@ def _ease(x):
     return x * x * (3 - 2 * x)
 
 
+DEVANAGARI_TEST = 'कमरनह'      # letters every Hindi font must really have
+MISSING_CHAR = '\U0010fffd'                  # a character no font has, it is drawn as the font's empty box
+
+
+def _blank_glyph(f, ch):
+    """True when the font draws this character as its empty .notdef box (the same picture as MISSING_CHAR)."""
+    try:
+        m, ref = f.getmask(ch), f.getmask(MISSING_CHAR)
+        return m.size == ref.size and m.tobytes() == ref.tobytes()
+    except Exception:  # noqa
+        return True
+
+
+def font_draws_devanagari(f):
+    """False for old non-Unicode Hindi fonts (Kruti Dev, Shree-Lipi, AMS and similar). Those fonts open fine and even give a
+    text width, but they keep their letters on the English keyboard codes, so real Devanagari characters all come out as
+    the same empty box."""
+    if f.getlength('क्ष') <= 0:
+        return False
+    return not any(_blank_glyph(f, ch) for ch in DEVANAGARI_TEST)
+
+
 def pick_custom_font(here, log_fn=None):
     """One random usable font from assets/hindi_fonts/ (a file that cannot draw Devanagari is skipped). '' when there is none."""
     folder = os.path.join(here, FONT_DIR)
@@ -83,8 +105,8 @@ def pick_custom_font(here, log_fn=None):
         p = os.path.join(folder, n)
         try:
             f = _font(p, 40)
-            if f.getlength('\u0915\u094d\u0937') <= 0:
-                raise ValueError('no width for a Devanagari test word')
+            if not font_draws_devanagari(f):
+                raise ValueError('draws empty boxes for Devanagari (an old non-Unicode font, use a Unicode Hindi font)')
             if log_fn:
                 log_fn('custom Hindi font for this video:', n, '(' + str(len(names)) + ' available)')
             return p
@@ -92,7 +114,7 @@ def pick_custom_font(here, log_fn=None):
             if log_fn:
                 log_fn('custom font skipped:', n, str(e)[:100])
     if log_fn:
-        log_fn('no custom Hindi font found in', FONT_DIR, ', keeping the default fonts')
+        log_fn('no usable custom Hindi font found in', FONT_DIR, ', keeping the default fonts')
     return ''
 
 
