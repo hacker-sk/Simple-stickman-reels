@@ -3,8 +3,9 @@ adapted to the Hindi (Devanagari) text and to the red background with the framed
 
 - load_layout: full-screen 9:16 background, the frame lines are detected and the picture window is the whole
   framed square plus a small overscan, so the pictures hide the lines and nothing shows outside the square.
-- HookOverlay: Hindi hook above the square (white text, focus word red with glow, black outline).
+- HookOverlay: Hindi hook above the square (white text, focus word in the video's caption highlight colour with glow, black outline).
 - CaptionTrack: short caption lines centred on the bottom edge of the square (half inside the square, half on the background), all words white, the spoken word in one highlight colour.
+- Fonts: one custom Hindi font from assets/hindi_fonts/ is picked at random for every video and used for the hook and all captions.
 - render_video: English style crossfade with a small zoom, slower and smoother image motion, fade to black at the end.
 If the background file is missing or its frame is not found, setup() returns None and render_hindi.py keeps its old layout.
 """
@@ -39,11 +40,13 @@ MOTION_AMOUNT = 0.5              # English keeps 0.7 of each zoom/pan travel; Hi
 MOTIONS = ['pan_right', 'pan_left', 'slide_up', 'slide_down', 'zoom_in', 'zoom_out', 'focus']
 HOOK_FONT = ('Poppins-Black.ttf', 'https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Black.ttf')
 HOOK_WHITE = (255, 255, 255)
-HOOK_ACCENT = (255, 59, 48)
 CAPTION_WHITE = (255, 255, 255)
 OUTLINE = (0, 0, 0)
-# same highlight colours as the English caption palette (yellow, blue); black is skipped because it is invisible here
+# same highlight colours as the English caption palette (yellow, blue); black is skipped because it is invisible here.
+# One of them is picked per video and used for the spoken caption word AND for the hook's focus word (no red any more).
 HIGHLIGHTS = [(255, 214, 0), (30, 144, 255)]
+FONT_DIR = os.path.join('assets', 'hindi_fonts')     # custom Hindi fonts (.ttf / .otf), one is picked at random per video
+FONT_EXTS = ('.ttf', '.otf')
 CAPTION_SIZES = (88, 80, 72, 64, 56)
 CAPTION_FROM_BOTTOM = 0         # centre of the caption block, px above the bottom edge of the picture window; 0 = centred on the edge (half in the square, half on the background). Nudge by a few px if the text looks off-centre
 
@@ -66,6 +69,31 @@ def _font(path, size):
 def _ease(x):
     x = min(1.0, max(0.0, x))
     return x * x * (3 - 2 * x)
+
+
+def pick_custom_font(here, log_fn=None):
+    """One random usable font from assets/hindi_fonts/ (a file that cannot draw Devanagari is skipped). '' when there is none."""
+    folder = os.path.join(here, FONT_DIR)
+    try:
+        names = [n for n in os.listdir(folder) if n.lower().endswith(FONT_EXTS)]
+    except OSError:
+        names = []
+    random.shuffle(names)
+    for n in names:
+        p = os.path.join(folder, n)
+        try:
+            f = _font(p, 40)
+            if f.getlength('\u0915\u094d\u0937') <= 0:
+                raise ValueError('no width for a Devanagari test word')
+            if log_fn:
+                log_fn('custom Hindi font for this video:', n, '(' + str(len(names)) + ' available)')
+            return p
+        except Exception as e:  # noqa
+            if log_fn:
+                log_fn('custom font skipped:', n, str(e)[:100])
+    if log_fn:
+        log_fn('no custom Hindi font found in', FONT_DIR, ', keeping the default fonts')
+    return ''
 
 
 # ----------------------------------------------------------------------------- background + layout
@@ -209,7 +237,10 @@ class HookOverlay:
 
     def _build(self, line, focus):
         W, top_h = CFG['W'], CFG['HOOK_H']
-        fp = _hook_font_path()
+        custom = CFG.get('custom_font') or ''
+        fp = custom or _hook_font_path()
+        latin_fp = _hook_font_path()                     # Poppins: used for English-only words when a custom font is active
+        acc = STATE.get('hl') or HIGHLIGHTS[0]           # the focus word uses the same highlight colour as the captions
         tokens = line.split(' ')
         accent = [False] * len(tokens)
         f_words = [_norm(x) for x in focus.split() if _norm(x)]
@@ -226,9 +257,9 @@ class HookOverlay:
         max_w = CFG['PW'] - 90
         chosen = None
         for size in range(CFG.get('HOOK_MAX_SIZE', 78), 35, -3):
-            font = _font(fp, size)
+            fonts = [_font(latin_fp if (custom and _font_kind(t) == 'latin') else fp, size) for t in tokens]
             space = size * 0.30
-            wid = [font.getlength(t) for t in tokens]
+            wid = [fonts[i].getlength(t) for i, t in enumerate(tokens)]
             lh = int(size * 1.3)
 
             def width(a, b):
@@ -236,7 +267,7 @@ class HookOverlay:
 
             n = len(tokens)
             if width(0, n) <= max_w and lh <= top_h - 40:
-                chosen = (font, size, space, wid, [(0, n)], lh)
+                chosen = (fonts, size, space, wid, [(0, n)], lh)
                 break
             best = None
             for cut in range(1, n):
@@ -244,11 +275,11 @@ class HookOverlay:
                 if best is None or m < best[0]:
                     best = (m, cut)
             if best and best[0] <= max_w and 2 * lh <= top_h - 24:
-                chosen = (font, size, space, wid, [(0, best[1]), (best[1], n)], lh)
+                chosen = (fonts, size, space, wid, [(0, best[1]), (best[1], n)], lh)
                 break
         if not chosen:
             raise RuntimeError('hook does not fit')
-        font, size, space, wid, spans, lh = chosen
+        fonts, size, space, wid, spans, lh = chosen
         layer = Image.new('RGBA', (W, top_h), (0, 0, 0, 0))
         glow = Image.new('RGBA', (W, top_h), (0, 0, 0, 0))
         d, gd = ImageDraw.Draw(layer), ImageDraw.Draw(glow)
@@ -259,11 +290,11 @@ class HookOverlay:
             x = (W - tw) / 2
             cy = y_first + li * lh
             for i in range(a, b):
-                col = HOOK_ACCENT if accent[i] else HOOK_WHITE
+                col = acc if accent[i] else HOOK_WHITE
                 if accent[i]:
-                    gd.text((x, cy), tokens[i], font=font, fill=HOOK_ACCENT + (255,), anchor='lm',
-                            stroke_width=6, stroke_fill=HOOK_ACCENT + (255,))
-                d.text((x, cy), tokens[i], font=font, fill=col, anchor='lm', stroke_width=5, stroke_fill=OUTLINE)
+                    gd.text((x, cy), tokens[i], font=fonts[i], fill=acc + (255,), anchor='lm',
+                            stroke_width=6, stroke_fill=acc + (255,))
+                d.text((x, cy), tokens[i], font=fonts[i], fill=col, anchor='lm', stroke_width=5, stroke_fill=OUTLINE)
                 x += wid[i] + space
         glow = glow.filter(ImageFilter.GaussianBlur(11))
         glow.putalpha(glow.getchannel('A').point(lambda v: int(v * 0.55)))
@@ -298,17 +329,18 @@ def _latin_font_path():
 class CaptionTrack:
     """Short caption lines (max 3 words) centred on the bottom edge of the square: half inside the picture, half on the
     background below. All words are white, the word being spoken is in the video's one highlight colour. Every line is
-    fitted to the picture width, and the whole caption block is centred vertically on the bottom edge of the square."""
+    fitted to the picture width, and the whole caption block is centred vertically on the bottom edge of the square.
+    Devanagari words use the custom font picked for this video (CFG['custom_font']), else the default Devanagari font."""
 
     def __init__(self, words):
-        self.fp = CFG['font']()
+        self.fp = CFG.get('custom_font') or CFG['font']()
         self.fps = {'dev': self.fp, 'latin': _latin_font_path(), 'mixed': _hook_font_path()}   # mixed words use Poppins (has both scripts)
         self.fonts = {}
         self.cache = {}
         self.stroke = 8
         self.pad = 16
         self.max_w = CFG['PW'] - 110
-        self.hl = random.choice(HIGHLIGHTS)
+        self.hl = STATE.get('hl') or random.choice(HIGHLIGHTS)
         self.chunks = []
         cur = []
         for w in words:
@@ -530,8 +562,12 @@ def setup(payload, w, h, here, font_fn, log_fn):
             break
     STATE['layout'] = lay
     STATE['hook'] = None
+    CFG['custom_font'] = ''
+    STATE['hl'] = None
     if not lay:
         return None
+    CFG['custom_font'] = pick_custom_font(here, log_fn)  # one font per video, used by the hook and every caption
+    STATE['hl'] = random.choice(HIGHLIGHTS)              # one highlight colour per video, used by the hook focus word and the captions
     CFG.update(PW=lay['pw'], PH=lay['ph'], HOOK_H=lay['hook_h'], HOOK_Y_OFFSET=14,
                CAP_LAST_Y=lay['box'][3] - CAPTION_FROM_BOTTOM)
     line, focus = hook_text(payload)
