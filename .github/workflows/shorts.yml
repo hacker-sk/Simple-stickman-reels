@@ -7,19 +7,21 @@ name: Hindi Shorts
 # SHORTS_SCHEDULE_ENABLED is "true", so it stays off until the n8n schedule has been switched off.
 #
 # Google Flow images (package runs only) use three jobs: prepare -> flow -> make.
-#   prepare: makes the voiceover, works out the real word timing of that voice (WhisperX, same code as the renderer), takes every
-#            scene's start time from it, puts that start time at the very beginning of each image prompt as [minute-second]
-#            (e.g. [0-5], [1-7]) and uploads voice + word timing + tagged prompts as the "flow-prep" artifact.
-#            If the word timing fails, the start times are estimated from the voice length instead.
+#   prepare: makes the voiceover, works out the word timing of that voice by FORCED ALIGNMENT of the known script (falls back to the
+#            renderer's Whisper timing, then to an estimate from the voice length), takes every scene's start time from it, tags each
+#            image prompt with its scene number at the very beginning ([s01], [s02] ...) and uploads voice + word timing + tagged
+#            prompts as the "flow-prep" artifact.
 #   flow:    only the browser work. Downloads "flow-prep", generates the images with Google Flow (ZAPI FLOW extension, same setup
-#            as flow-batch.yml, 1 hour cap) and uploads them as the "flow-images" artifact.
+#            as flow-batch.yml, 1 hour cap), matches every image to its prompt through Flow's own media ids, saves it as scene_NN.<ext>,
+#            retries scenes that have no usable image, and uploads the images + a manifest as the "flow-images" artifact.
 #   make:    always runs afterwards (also when prepare or flow failed). Reuses the prepared voice and word timing only when the
-#            narration hash matches (otherwise it makes its own voice and runs its own Whisper), matches each Flow image to its scene
-#            by the tag in the file name, and the normal providers (HINDI_IMAGE_ORDER, Cloudflare ...) make every image that is
-#            missing or could not be matched. The log line "VOICE CASE:" says which case happened.
+#            narration hash matches (otherwise it makes its own voice and runs its own Whisper), gives each scene its scene_NN image,
+#            and the normal providers (IMAGE_PROVIDER_ORDER, Cloudflare first ...) make every image that is missing.
+#            The log line "VOICE CASE:" says which case happened.
 # If prepare fails, Flow is skipped and the normal providers make all images.
 # Switch Flow off with the repository variable FLOW_ENABLED = "false". Optional variable FLOW_MODEL (default Nano Banana Lite).
 # Needs the same FLOW_COOKIES_B64 secret and FLOW_PROJECT_URL variable as flow-batch.yml; without them Flow is skipped.
+# Python packages: prepare and make install the SAME pinned versions (constraints.txt, CPU torch 2.8.0) on Ubuntu 24.04.
 
 on:
   schedule:
@@ -74,7 +76,7 @@ concurrency:
 jobs:
   prepare:
     if: github.event_name != 'schedule' && vars.FLOW_ENABLED != 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     outputs:
       flow: ${{ steps.prep.outputs.flow }}
@@ -116,19 +118,20 @@ jobs:
       - name: Install Python packages
         if: steps.pkg.outputs.go == 'true'
         run: |
-          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu || echo "::warning::torch install failed, word timing will fall back to an estimate"
-          pip install -r requirements.txt || echo "::warning::requirements install failed, word timing will fall back to an estimate"
+          # Same two commands as the make job: CPU torch first, then everything else under the shared version pins.
+          pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu || echo "::warning::torch install failed, word timing will fall back to an estimate"
+          pip install -c constraints.txt -r requirements.txt gradio_client || echo "::warning::requirements install failed, word timing will fall back to an estimate"
 
-      - name: Cache Whisper model
+      - name: Cache Whisper and alignment models
         if: steps.pkg.outputs.go == 'true'
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/huggingface
             ~/.cache/torch
-          key: whisperx-large-v3-turbo-hi-v1
+          key: whisperx-large-v3-turbo-hi-v2
 
-      - name: Prepare Flow prompts (voice, real word timing, then time-tagged prompts)
+      - name: Prepare Flow prompts (voice, forced-alignment timing, then scene-tagged prompts)
         id: prep
         if: steps.pkg.outputs.go == 'true'
         env:
@@ -163,7 +166,7 @@ jobs:
   flow:
     needs: prepare
     if: needs.prepare.outputs.flow == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -252,7 +255,7 @@ jobs:
   make:
     needs: [prepare, flow]
     if: ${{ !cancelled() && (github.event_name != 'schedule' || vars.SHORTS_SCHEDULE_ENABLED == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
       contents: write
@@ -269,16 +272,17 @@ jobs:
 
       - name: Install Python packages
         run: |
-          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements.txt gradio_client
+          # Same two commands as the prepare job: CPU torch first, then everything else under the shared version pins.
+          pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -c constraints.txt -r requirements.txt gradio_client
 
-      - name: Cache Whisper model
+      - name: Cache Whisper and alignment models
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/huggingface
             ~/.cache/torch
-          key: whisperx-large-v3-turbo-hi-v1
+          key: whisperx-large-v3-turbo-hi-v2
 
       - name: Get the prepared voice, word timing and tags
         # Also after a failed Flow job. A missing artifact is not an error: the renderer then makes its own voice.
@@ -339,7 +343,8 @@ jobs:
           BUFFER_YOUTUBE_CHANNEL_ID: ${{ vars.BUFFER_YOUTUBE_CHANNEL_ID || secrets.BUFFER_YOUTUBE_CHANNEL_ID }}
           BUFFER_INSTAGRAM_CHANNEL_ID: ${{ vars.BUFFER_INSTAGRAM_CHANNEL_ID || secrets.BUFFER_INSTAGRAM_CHANNEL_ID }}
           BUFFER_FACEBOOK_CHANNEL_ID: ${{ vars.BUFFER_FACEBOOK_CHANNEL_ID || secrets.BUFFER_FACEBOOK_CHANNEL_ID }}
-          IMAGE_PROVIDER_ORDER: ${{ vars.IMAGE_PROVIDER_ORDER }}
+          # Cloudflare first; Hugging Face last because its credits can run out (HTTP 402). Override with the IMAGE_PROVIDER_ORDER variable.
+          IMAGE_PROVIDER_ORDER: ${{ vars.IMAGE_PROVIDER_ORDER || 'cloudflare,pollinations,hfspace' }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = "push" ] && [ -f jobs/package.json ]; then
             export PACKAGE="$(cat jobs/package.json)"
