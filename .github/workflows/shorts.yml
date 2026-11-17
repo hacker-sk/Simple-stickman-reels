@@ -6,12 +6,18 @@ name: Hindi Shorts
 # Scheduled run: every 3.5 hours between 10:00 and 22:00 IST. It only runs when the repository variable
 # SHORTS_SCHEDULE_ENABLED is "true", so it stays off until the n8n schedule has been switched off.
 #
-# Google Flow images (package runs only): the "flow" job first makes the voiceover and works out when every scene starts, puts that
-# start time at the very beginning of each image prompt as [minute-second] (e.g. [0-5], [1-7]), then generates the images with
-# Google Flow (ZAPI FLOW extension, same setup as flow-batch.yml, 1 hour cap) and uploads images + voice as the "flow-images" artifact.
-# The "make" job always runs afterwards: it reuses that voice, matches each Flow image to its scene by the tag in the file name,
-# and the normal providers (HINDI_IMAGE_ORDER, Cloudflare ...) make every image that is missing or could not be matched.
-# If the voice step fails, Flow is skipped and the normal providers make all images.
+# Google Flow images (package runs only) use three jobs: prepare -> flow -> make.
+#   prepare: makes the voiceover, works out the real word timing of that voice (WhisperX, same code as the renderer), takes every
+#            scene's start time from it, puts that start time at the very beginning of each image prompt as [minute-second]
+#            (e.g. [0-5], [1-7]) and uploads voice + word timing + tagged prompts as the "flow-prep" artifact.
+#            If the word timing fails, the start times are estimated from the voice length instead.
+#   flow:    only the browser work. Downloads "flow-prep", generates the images with Google Flow (ZAPI FLOW extension, same setup
+#            as flow-batch.yml, 1 hour cap) and uploads them as the "flow-images" artifact.
+#   make:    always runs afterwards (also when prepare or flow failed). Reuses the prepared voice and word timing only when the
+#            narration hash matches (otherwise it makes its own voice and runs its own Whisper), matches each Flow image to its scene
+#            by the tag in the file name, and the normal providers (HINDI_IMAGE_ORDER, Cloudflare ...) make every image that is
+#            missing or could not be matched. The log line "VOICE CASE:" says which case happened.
+# If prepare fails, Flow is skipped and the normal providers make all images.
 # Switch Flow off with the repository variable FLOW_ENABLED = "false". Optional variable FLOW_MODEL (default Nano Banana Lite).
 # Needs the same FLOW_COOKIES_B64 secret and FLOW_PROJECT_URL variable as flow-batch.yml; without them Flow is skipped.
 
@@ -66,31 +72,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  flow:
+  prepare:
     if: github.event_name != 'schedule' && vars.FLOW_ENABLED != 'false'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 40
+    outputs:
+      flow: ${{ steps.prep.outputs.flow }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Prepare Flow prompts (voice first, then time-tagged prompts)
-        id: prep
+      - name: Check the Flow setup and the package
+        id: pkg
         env:
           PACKAGE_INPUT: ${{ inputs.package }}
           FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
           FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
-          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
-          GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
-          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
-          GEMINI_API_KEY_6: ${{ secrets.GEMINI_API_KEY_6 }}
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
         run: |
           if [ -z "$FLOW_COOKIES_B64" ] || [ -z "$FLOW_URL" ]; then
             echo "::warning::FLOW_COOKIES_B64 secret or FLOW_PROJECT_URL variable is missing, Flow is skipped"
@@ -102,22 +98,87 @@ jobs:
             printf '%s' "$PACKAGE_INPUT" > /tmp/package.json
           fi
           if [ -s /tmp/package.json ]; then
-            # ffmpeg is needed to make and measure the voiceover
-            sudo apt-get update -y && sudo apt-get install -y ffmpeg || echo "::warning::ffmpeg install failed, the voice step will fail and Flow is skipped"
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No package given (not a package run), Flow is skipped"
           fi
-          pip install requests pillow
+
+      - uses: actions/setup-python@v5
+        if: steps.pkg.outputs.go == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ffmpeg
+        if: steps.pkg.outputs.go == 'true'
+        run: sudo apt-get update -y && sudo apt-get install -y ffmpeg || echo "::warning::ffmpeg install failed, the voice step will fail and Flow is skipped"
+
+      - name: Install Python packages
+        if: steps.pkg.outputs.go == 'true'
+        run: |
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu || echo "::warning::torch install failed, word timing will fall back to an estimate"
+          pip install -r requirements.txt || echo "::warning::requirements install failed, word timing will fall back to an estimate"
+
+      - name: Cache Whisper model
+        if: steps.pkg.outputs.go == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/torch
+          key: whisperx-large-v3-turbo-hi-v1
+
+      - name: Prepare Flow prompts (voice, real word timing, then time-tagged prompts)
+        id: prep
+        if: steps.pkg.outputs.go == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
+          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
+          GEMINI_API_KEY_6: ${{ secrets.GEMINI_API_KEY_6 }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
+        run: |
           python pipeline/flow_images.py prepare --package /tmp/package.json \
             --prompts flow-batch/prompts/shorts_flow.json --meta flow-batch/prompts/shorts_flow_meta.json \
             --voice flow-batch/prompts/shorts_flow_voice.wav \
             || echo "::warning::Flow prompt preparation failed, Flow is skipped"
 
-      - uses: actions/setup-node@v4
+      - name: Upload prepared voice, word timing and tagged prompts
         if: steps.prep.outputs.flow == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flow-prep
+          path: |
+            flow-batch/prompts/shorts_flow.json
+            flow-batch/prompts/shorts_flow_meta.json
+            flow-batch/prompts/shorts_flow_voice.wav
+            flow-batch/prompts/shorts_flow_words.json
+          if-no-files-found: ignore
+          retention-days: 3
+
+  flow:
+    needs: prepare
+    if: needs.prepare.outputs.flow == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get the tagged prompts
+        uses: actions/download-artifact@v4
+        with:
+          name: flow-prep
+          path: flow-batch/prompts
+
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Download ZAPI Flow extension
-        if: steps.prep.outputs.flow == 'true'
         run: |
           EXT_ID=debadkiomlbdambamdpdlgdkgnedcjil
           DEST=flow-batch/extension/zapi-flow
@@ -130,7 +191,6 @@ jobs:
           grep -m1 '"version"' "$DEST/manifest.json"
 
       - name: Install Flow dependencies
-        if: steps.prep.outputs.flow == 'true'
         working-directory: flow-batch
         run: |
           npm install
@@ -138,7 +198,6 @@ jobs:
           sudo apt-get install -y xvfb
 
       - name: Restore saved Flow session
-        if: steps.prep.outputs.flow == 'true'
         uses: actions/cache/restore@v4
         with:
           path: flow-batch/session
@@ -147,7 +206,6 @@ jobs:
             flow-session-
 
       - name: Run Flow batch
-        if: steps.prep.outputs.flow == 'true'
         continue-on-error: true
         timeout-minutes: 50
         working-directory: flow-batch
@@ -165,26 +223,23 @@ jobs:
           xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
 
       - name: Save refreshed Flow session
-        if: always() && steps.prep.outputs.flow == 'true' && hashFiles('flow-batch/session/cookies.json') != ''
+        if: always() && hashFiles('flow-batch/session/cookies.json') != ''
         uses: actions/cache/save@v4
         with:
           path: flow-batch/session
           key: flow-session-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload Flow images
-        if: always() && steps.prep.outputs.flow == 'true'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: flow-images
-          path: |
-            flow-batch/downloads/final
-            flow-batch/prompts/shorts_flow_meta.json
-            flow-batch/prompts/shorts_flow_voice.wav
+          path: flow-batch/downloads/final
           if-no-files-found: ignore
           retention-days: 3
 
       - name: Upload Flow debug files
-        if: always() && steps.prep.outputs.flow == 'true'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: flow-debug
@@ -195,7 +250,7 @@ jobs:
           retention-days: 3
 
   make:
-    needs: flow
+    needs: [prepare, flow]
     if: ${{ !cancelled() && (github.event_name != 'schedule' || vars.SHORTS_SCHEDULE_ENABLED == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -225,6 +280,15 @@ jobs:
             ~/.cache/torch
           key: whisperx-large-v3-turbo-hi-v1
 
+      - name: Get the prepared voice, word timing and tags
+        # Also after a failed Flow job. A missing artifact is not an error: the renderer then makes its own voice.
+        if: needs.prepare.result == 'success' && needs.prepare.outputs.flow == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: flow-prep
+          path: flow_in/prep
+
       - name: Get Flow images
         # Also after a failed Flow job: the images it did finish are still uploaded. A missing artifact is not an error.
         if: needs.flow.result != 'skipped'
@@ -232,7 +296,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: flow-images
-          path: flow_in
+          path: flow_in/images
 
       - name: Make the video and publish it
         id: make
