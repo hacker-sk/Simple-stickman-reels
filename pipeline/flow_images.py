@@ -153,6 +153,11 @@ def make_voice_file(narration, path):
     stub.STATE = {}
     sys.modules.setdefault('render_hindi_overlay', stub)
     import render_hindi as rh
+    try:
+        import voice_polish   # bright fast voice style, short pauses (same patch the renderer gets from run_hindi.py)
+        voice_polish.install(rh)
+    except Exception as e:  # noqa
+        log('voice polish not installed, the plain voice is used: ' + str(e)[:150])
     rh.make_voice(narration, path)
     dur = rh.audio_duration(path)
     if dur > rh.MAX_VOICE_SECONDS:
