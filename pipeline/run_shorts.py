@@ -30,7 +30,7 @@ RENDERER = os.environ.get('RENDER_SCRIPT', os.path.join(ROOT, 'render_hindi.py')
 RENDER_TIMEOUT = 80 * 60
 VOICE = {
     'language': 'hi', 'gemini_voice': 'designed',
-    'gemini_style': 'Speak in a natural, youthful Indian male voice with a slightly nasal, soft husky texture. Use a casual, friendly, expressive Hindi storytelling style with a subtle playful tone. Keep the delivery conversational, slightly laid-back, and emotionally engaging. Use natural pitch variations, clear Hindi pronunciation, and meaningful pauses. Emphasize important words without sounding dramatic or overly theatrical. Avoid robotic delivery, excessive bass, or a formal newsreader tone.',
+    'gemini_style': 'Speak in a deep, warm, resonant Indian male baritone in clear conversational Hindi. Project with strong, close-mic studio presence and high vocal clarity. Deliver as a wise, engaging storyteller at a steady pace, emphasizing key phrases with brief dramatic pauses before moral takeaways',
     'gemini_models': ['gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts'],
     'voice_id': 'ibbx9zDYGvLgtYzRbqqG', 'tts_model': 'eleven_multilingual_v2',
     'fish_voice_id': '6366ea69a97d41ada9eb855a64e56fba', 'fish_model': 's2.1-pro-free',
