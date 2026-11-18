@@ -12,15 +12,21 @@ name: Hindi Shorts
 #   prepare: makes the voiceover, works out the word timing of that voice by FORCED ALIGNMENT of the known script (falls back to the
 #            renderer's Whisper timing, then to an estimate from the voice length), takes every scene's start time from it, tags each
 #            image prompt with its scene number at the very beginning ([s01], [s02] ...) and uploads voice + word timing + tagged
-#            prompts as the "flow-prep" artifact.
-#   flow:    only the browser work. Downloads "flow-prep", generates the images with Google Flow (ZAPI FLOW extension, same setup
-#            as flow-batch.yml, 10 minute wait cap; it also stops at once when Flow shows "We noticed some unusual activity"),
+#            prompts as the "flow-prep" artifact. It also writes the thumbnail prompt file (shorts_thumb.json) when the package has a
+#            "thumbnail_prompt" (pipeline/thumb_prompt.py).
+#   flow:    only the browser work. Downloads "flow-prep", FIRST makes the thumbnail in PORTRAIT (its own Flow run, 5 minute wait cap,
+#            uploaded as the "flow-thumb" artifact), then generates the scene images with Google Flow in the normal settings (a fresh Flow
+#            run, so the settings switch back by themselves; ZAPI FLOW extension, same setup as flow-batch.yml, 10 minute wait cap; it also
+#            stops at once when Flow shows "We noticed some unusual activity"),
 #            matches every image to its prompt through Flow's own media ids, saves it as scene_NN.<ext>,
 #            retries scenes that have no usable image, and uploads the images + a manifest as the "flow-images" artifact.
 #   make:    always runs afterwards (also when prepare or flow failed). Reuses the prepared voice and word timing only when the
 #            narration hash matches (otherwise it makes its own voice and runs its own Whisper), gives each scene its scene_NN image,
 #            and the normal providers (IMAGE_PROVIDER_ORDER, Cloudflare first ...) make every image that is missing.
 #            The log line "VOICE CASE:" says which case happened.
+# Thumbnail: Buffer's API takes no custom thumbnail image for a video, only a frame position (thumbnailOffset, Instagram). So the make job
+# gives the "flow-thumb" image to the renderer (THUMB_DIR), which adds it as a 0.3 second silent last frame (pipeline/thumb_frame.py) and
+# Buffer is told where that frame is. No thumbnail image = no end frame and no offset.
 # If prepare fails, Flow is skipped and the normal providers make all images.
 # Switch Flow off with the repository variable FLOW_ENABLED = "false". Optional variable FLOW_MODEL (default Nano Banana Lite).
 # Flow image shape: square by default. Set the repository variable FLOW_ASPECT to portrait (or landscape, 3:4, 4:3) to change it.
@@ -165,6 +171,13 @@ jobs:
             --voice flow-batch/prompts/shorts_flow_voice.wav \
             || echo "::warning::Flow prompt preparation failed, Flow is skipped"
 
+      - name: Prepare the thumbnail prompt
+        # Writes flow-batch/prompts/shorts_thumb.json from the package field thumbnail_prompt. No field = no file = no thumbnail.
+        if: steps.pkg.outputs.go == 'true'
+        run: |
+          python pipeline/thumb_prompt.py --package /tmp/package.json --out flow-batch/prompts/shorts_thumb.json \
+            || echo "::warning::Thumbnail prompt step failed, no thumbnail this time"
+
       - name: Upload prepared voice, word timing and tagged prompts
         if: steps.prep.outputs.flow == 'true'
         uses: actions/upload-artifact@v4
@@ -175,6 +188,7 @@ jobs:
             flow-batch/prompts/shorts_flow_meta.json
             flow-batch/prompts/shorts_flow_voice.wav
             flow-batch/prompts/shorts_flow_words.json
+            flow-batch/prompts/shorts_thumb.json
           if-no-files-found: ignore
           retention-days: 3
 
@@ -182,7 +196,7 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.flow == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -223,6 +237,32 @@ jobs:
           restore-keys: |
             flow-session-
 
+      - name: Make the thumbnail (portrait) before the scenes
+        # Own Flow run with the portrait setting. The scenes step below is a fresh Flow run with the normal settings, so Flow is
+        # switched back to the scene settings (and verified there) without anything extra. Skipped when the package had no thumbnail_prompt.
+        if: hashFiles('flow-batch/prompts/shorts_thumb.json') != ''
+        continue-on-error: true
+        timeout-minutes: 8
+        working-directory: flow-batch
+        env:
+          FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
+          FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
+          PROMPTS_FILE: prompts/shorts_thumb.json
+          FLOW_ASPECT: portrait
+          FLOW_COUNT: "1"
+          FLOW_MODEL: ${{ vars.FLOW_MODEL || 'Nano Banana Lite' }}
+        run: |
+          sed -i 's/"timeoutMinutes": *[0-9]*/"timeoutMinutes": 5/' config.json
+          xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js || echo "::warning::The thumbnail Flow run failed, no thumbnail this time"
+          mkdir -p ../flow-thumb
+          find downloads/final -maxdepth 1 -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' \) -exec cp {} ../flow-thumb/ \; || true
+          ls -la ../flow-thumb || true
+          # Clean slate for the scenes run: the thumbnail must not be collected as a scene image. Its debug files are kept as debug-thumb.
+          rm -rf debug-thumb
+          mv debug debug-thumb || true
+          rm -rf downloads
+          rm -rf "$HOME"/Downloads/* || true
+
       - name: Run Flow batch
         continue-on-error: true
         timeout-minutes: 13
@@ -247,6 +287,15 @@ jobs:
           path: flow-batch/session
           key: flow-session-${{ github.run_id }}-${{ github.run_attempt }}
 
+      - name: Upload the thumbnail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flow-thumb
+          path: flow-thumb
+          if-no-files-found: ignore
+          retention-days: 3
+
       - name: Upload Flow images
         if: always()
         uses: actions/upload-artifact@v4
@@ -264,6 +313,7 @@ jobs:
           path: |
             flow-batch/downloads/rejected
             flow-batch/debug
+            flow-batch/debug-thumb
           if-no-files-found: ignore
           retention-days: 3
 
@@ -333,6 +383,15 @@ jobs:
           name: flow-images
           path: flow_in/images
 
+      - name: Get the thumbnail
+        # Kept out of flow_in so it can never be mistaken for a scene image. A missing artifact (no thumbnail made) is not an error.
+        if: needs.flow.result != 'skipped'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: flow-thumb
+          path: thumb_in
+
       - name: Make the video and publish it
         id: make
         env:
@@ -383,6 +442,9 @@ jobs:
           if [ -d flow_in ]; then
             export FLOW_DIR="$PWD/flow_in"
             export RENDER_SCRIPT="$PWD/render_hindi_flow.py"
+          fi
+          if [ -d thumb_in ]; then
+            export THUMB_DIR="$PWD/thumb_in"
           fi
           python pipeline/run_shorts.py
 
