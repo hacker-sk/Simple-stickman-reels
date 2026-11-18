@@ -8,13 +8,15 @@ Inputs (environment, set by .github/workflows/shorts.yml):
   IDEA, SCRIPT          manual idea / finished script (both empty = scheduled run, a topic is picked automatically)
   PACKAGE               finished package JSON from Claude chat (title, description, mood, hook, scenes with narration +
                         image_prompt, see pipeline/package.py); skips topic, script and image-prompt steps. It can also carry
-                        voice_style (delivery style of this script), random_bg (true = random artwork background, default plain black)
-                        and bgm (true = background music, default none)
+                        voice_style (delivery style of this script), random_bg (true = random artwork background, default plain black),
+                        bgm (true = background music, default none) and thumbnail_prompt (portrait thumbnail, see pipeline/thumb_prompt.py)
   SCRIPT_MODE           auto | truth | story   (scheduled runs only)
   ART_STYLE             random (default) | indian_storybook | sketchbook_doodle | whimsical_indian | editorial_pencil |
                         stickman_sepia | village_storybook
   IMAGE_PROVIDER_ORDER  optional, copied to HINDI_IMAGE_ORDER for the renderer
   MUSIC_VOLUME          optional, level of the background song (default 0.14, see music_picker.py)
+  THUMB_DIR             optional, folder with the thumbnail image the flow job made (artifact flow-thumb); it is hosted publicly and
+                        sent to Buffer as the thumbnail of the YouTube, Instagram and Facebook posts
 
 Voice: Gemini prebuilt voice Iapetus. The voice payload below (pipeline/voice_patch.py voice_payload) is what Gemini TTS gets, in BOTH places where
 the voiceover is made (the prepare job through pipeline/flow_images.py, and the make job through the render job file). It holds the voice
@@ -140,11 +142,29 @@ def validate_output():
     return result, urls, duration
 
 
-def publish_to_buffer(urls, title, description):
+def thumbnail_url():
+    """Public URL of the thumbnail the flow job made (THUMB_DIR), or '' when there is none. Never raises: no thumbnail is not a failed run."""
+    d = env('THUMB_DIR')
+    if not d or not os.path.isdir(d):
+        return ''
+    try:
+        for root, _dirs, files in os.walk(d):
+            for f in sorted(files):
+                p = os.path.join(root, f)
+                if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')) and os.path.getsize(p) > 5000:
+                    url = buffer.host_image(p)
+                    log('thumbnail ' + f + (' hosted: ' + url if url else ': no host accepted it, posting without a thumbnail'))
+                    return url
+    except Exception as e:  # noqa
+        log('thumbnail skipped: ' + buffer.redact(e)[:150])
+    return ''
+
+
+def publish_to_buffer(urls, title, description, thumb=''):
     """Try each hosted URL until YouTube or Instagram accepts the post."""
     last = None
     for url in urls:
-        out = buffer.publish(url, title, description)
+        out = buffer.publish(url, title, description, thumb)
         last = out
         if out['post_ids'].get('YouTube') or out['post_ids'].get('Instagram'):
             out['video_url'] = url
@@ -196,7 +216,9 @@ def main():
         set_output('video_ready', 'true')
         lines += ['- Video: ' + str(round(duration, 1)) + 's, ' + str(result.get('size_mb')) + ' MB', '- Hosted: ' + ', '.join(urls)]
 
-        out = publish_to_buffer(urls, prep['title'], prep['description'])
+        thumb = thumbnail_url()
+        lines.append('- Thumbnail: ' + (thumb if thumb else 'none (no thumbnail made or hosted)'))
+        out = publish_to_buffer(urls, prep['title'], prep['description'], thumb)
         scheduled = sorted((out or {}).get('post_ids') or {})
         lines += ['- Buffer scheduled: ' + (', '.join(scheduled) or 'nothing')]
         for w in (out or {}).get('warnings') or []:
