@@ -1,6 +1,7 @@
 // One-time step per Flow run: create a brand-new Library (the + next to "Library" in Flow's sidebar) right after the
-// project loads, before anything else. Returns false when the sidebar is not there yet (not logged in), so the caller
-// can try again after the next page load; true once the step has been handled (even if it could not be confirmed).
+// project loads, before anything else, and give it a unique name (run-<time>-<runid>). Returns false when the sidebar is not
+// there yet (not logged in), so the caller can try again after the next page load; true once the step has been handled
+// (even if it could not be confirmed).
 const fs = require("fs");
 const path = require("path");
 
@@ -46,31 +47,93 @@ async function ensureFreshLibrary(page, h) {
   await h.pause(900, 1800);
 
   const name = "run-" + new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12) + "-" + String(process.env.GITHUB_RUN_ID || "local").slice(-5);
-  const dialog = page.locator('[role="dialog"]').locator("visible=true").first();
-  const input = dialog.locator('input, textarea, [contenteditable="true"]').locator("visible=true").first();
   let named = false;
-  try {
-    await input.waitFor({ state: "visible", timeout: 6000 });
-    await input.click();
-    await h.pause(250, 600);
-    await page.keyboard.press("Control+A");
-    await h.type(page, name);
-    await h.pause(400, 900);
-    await page.keyboard.press("Enter");
-    named = true;
-  } catch (e) {
-    console.log("Fresh library: no name field appeared, trying the dialog's confirm button / default name");
+
+  // Flow renames INLINE: the new "Untitled collection" row in the sidebar turns into an input with its text selected and a
+  // check mark beside it. Find that editable element in the sidebar (left 320 px, below the Library row), not the search box.
+  const findEditable = () => page.evaluate((r) => {
+    const side = (el) => { const b = el.getBoundingClientRect(); return b.width > 0 && b.height > 0 && b.x < 320 && b.y > r.y; };
+    const editable = (el) => el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+    const a = document.activeElement;
+    if (editable(a) && side(a)) { const b = a.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2, focused: true }; }
+    for (const el of document.querySelectorAll('input,textarea,[contenteditable="true"],[contenteditable=""]')) {
+      if (side(el)) { const b = el.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2, focused: false }; }
+    }
+    return null;
+  }, lb || { y: 0 });
+
+  let field = null;
+  for (let i = 0; i < 15 && !field; i++) { field = await findEditable().catch(() => null); if (!field) await h.pause(350, 500); }
+  if (field) {
+    try {
+      if (!field.focused) {
+        await h.moveTo(page, field.x + h.rand(-4, 4), field.y + h.rand(-2, 2));
+        await h.pause(80, 200);
+        await page.mouse.down();
+        await h.pause(40, 100);
+        await page.mouse.up();
+        await h.pause(250, 600);
+      }
+      await page.keyboard.press("Control+A");
+      await h.pause(120, 300);
+      await h.type(page, name);
+      await h.pause(400, 900);
+      await page.keyboard.press("Enter");
+      named = true;
+    } catch (e) {
+      console.log("Fresh library: typing the name failed: " + String(e && e.message).slice(0, 120));
+    }
+  } else {
+    // Older Flow versions used a dialog instead.
+    const dialog = page.locator('[role="dialog"]').locator("visible=true").first();
+    const input = dialog.locator('input, textarea, [contenteditable="true"]').locator("visible=true").first();
+    try {
+      await input.waitFor({ state: "visible", timeout: 4000 });
+      await input.click();
+      await h.pause(250, 600);
+      await page.keyboard.press("Control+A");
+      await h.type(page, name);
+      await h.pause(400, 900);
+      await page.keyboard.press("Enter");
+      named = true;
+    } catch (e) {
+      console.log("Fresh library: no name field appeared, the library keeps its default name");
+    }
+    await h.pause(1200, 2200);
+    if (await dialog.count()) {
+      const ok = dialog.getByRole("button", { name: /create|save|done|add|ok|confirm/i }).first();
+      if (await ok.count()) await ok.click().catch(() => {});
+      await h.pause(1000, 2000);
+    }
   }
   await h.pause(1200, 2200);
-  // Fallback: a dialog that is still open needs its confirm button.
-  if (await dialog.count()) {
-    const ok = dialog.getByRole("button", { name: /create|save|done|add|ok|confirm/i }).first();
-    if (await ok.count()) await ok.click().catch(() => {});
-    await h.pause(1000, 2000);
-  }
 
   let confirmed = false;
-  if (named) confirmed = await page.getByText(name).first().waitFor({ state: "visible", timeout: 12000 }).then(() => true, () => false);
+  if (named) {
+    const seen = () => page.getByText(name).first().waitFor({ state: "visible", timeout: 6000 }).then(() => true, () => false);
+    confirmed = await seen();
+    if (!confirmed) {
+      // Enter did not save the name: press the check mark next to the field.
+      const chk = await page.evaluate((r) => {
+        for (const el of document.querySelectorAll('button,[role="button"]')) {
+          const b = el.getBoundingClientRect();
+          if (!b.width || !b.height || b.x > 320 || b.y <= r.y) continue;
+          const hint = ((el.getAttribute("aria-label") || "") + " " + (el.textContent || "")).toLowerCase();
+          if (/check|done|confirm|save/.test(hint)) return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+        }
+        return null;
+      }, lb || { y: 0 }).catch(() => null);
+      if (chk) {
+        await h.moveTo(page, chk.x + h.rand(-2, 2), chk.y + h.rand(-2, 2));
+        await h.pause(80, 200);
+        await page.mouse.down();
+        await h.pause(40, 100);
+        await page.mouse.up();
+        await h.pause(900, 1600);
+        confirmed = await seen();
+      }
+    }
+  }
   await page.screenshot({ path: path.join(DEBUG_DIR, "fresh-library.png") }).catch(() => {});
   console.log("Fresh library step done | name: " + (named ? name : "default") + " | confirmed on page: " + confirmed);
   if (named && !confirmed) console.log("::warning::Fresh library name not seen on the page - check debug/fresh-library.png");
