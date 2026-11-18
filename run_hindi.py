@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Starts the Hindi renderer with the mood based music picker (music_picker.py) and the Unicode caption fonts (hindi_fonts.py) installed.
+"""Starts the Hindi renderer with the mood based music picker (music_picker.py), the Unicode caption fonts (hindi_fonts.py) and the look patch installed.
 
 Used by render_hindi.yml (n8n runs) and by pipeline/run_shorts.py (Hindi Shorts / chat packages).
 RENDER_TARGET (optional) is the renderer to run: render_hindi.py (default) or render_hindi_flow.py.
-The delivery style comes from the payload (gemini_style). The designed voice description and the forced-alignment-first word timing are
-installed here from pipeline/voice_patch.py, the same voice text prepare uses (pipeline/flow_images.py), so the voice is the same
-whichever job makes it.
+The voice (Gemini prebuilt Iapetus + description + the delivery style of the script) comes from the payload (gemini_voice, gemini_style); the
+same voice text is built by pipeline/voice_patch.py for prepare (pipeline/flow_images.py) and for this job, so the voice is the same whichever
+job makes it. Forced-alignment-first word timing is installed from there too.
+pipeline/look_patch.py switches the look and sound by payload: black background unless random_bg, small captions under the square, no music unless bgm.
 """
 import os
 import runpy
@@ -23,10 +24,15 @@ if __name__ == '__main__':
     music_picker.install(rh)            # quieter song
     try:
         from pipeline import voice_patch
-        voice_patch.apply_voice(rh)               # deep warm baritone voice description (used when this job makes the voice)
+        voice_patch.apply_voice(rh)               # voice description text (the designed voice is no longer used)
         voice_patch.apply_forced_alignment(rh)    # forced alignment first when this job has to time the words
     except Exception as e:  # noqa
         print('[run_hindi] voice/alignment patch not installed, renderer defaults are used: ' + str(e)[:200], flush=True)
+    try:
+        from pipeline import look_patch
+        look_patch.install(rh)                    # black background, small captions under the square, music only on request
+    except Exception as e:  # noqa
+        print('[run_hindi] look patch not installed, the old look and music are used: ' + str(e)[:200], flush=True)
     target = os.environ.get('RENDER_TARGET', '').strip()
     if target and os.path.basename(target) != 'render_hindi.py':
         # render_hindi_flow.py imports render_hindi, which is the module patched above
