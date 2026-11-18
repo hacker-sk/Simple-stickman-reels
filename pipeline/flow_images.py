@@ -11,7 +11,8 @@ prepare : package JSON -> 1) the voiceover is made FIRST (the same make_voice th
           timing source), shorts_flow_voice.wav (reused by the renderer, so the times stay true) and, when the word timing worked,
           shorts_flow_words.json (reused by the renderer so Whisper does not run a second time).
           Sets the step output flow=true ONLY when the voice and prompts worked; otherwise Flow is skipped.
-          The voice description is installed with pipeline/voice_patch.apply_voice(), the same text the make job uses when it makes the voice itself.
+          The voice is the Gemini prebuilt voice Iapetus with its description and the delivery style written for this script
+          (package field voice_style), built by pipeline/voice_patch.voice_payload(), the same payload the make job uses when it makes the voice itself.
 match   : (used by render_hindi_flow.py) the Flow job saves each image as scene_NN.<ext> (NN = the NN-th Flow prompt). This gives each
           scene the image with its number. Older tag-in-file-name matching is kept as a fallback. A scene without a matching image gets
           no Flow image, so the normal providers (Cloudflare ...) make it. If the narration changed since prepare (hash differs), no
@@ -136,26 +137,35 @@ def load_scenes(raw):
     return [s for s in (scenes or []) if isinstance(s, dict)]
 
 
-def make_voice_file(narration, path):
+def voice_style_of(raw):
+    """The delivery style written for this script (package field voice_style), '' when there is none."""
+    try:
+        from pipeline import package
+        return package.parse(raw).get('voice_style') or ''
+    except Exception:  # noqa
+        try:
+            data = json.loads(raw)
+            return str(data.get('voice_style') or '').strip() if isinstance(data, dict) else ''
+        except Exception:  # noqa
+            return ''
+
+
+def make_voice_file(narration, path, style=''):
     """The renderer's own make_voice (Gemini, then ElevenLabs, then Fish). Returns (duration in seconds, the render_hindi module).
-    The voice is made by render_hindi.py from the VOICE payload of pipeline/run_shorts.py (delivery style) and the voice description
-    installed by pipeline/voice_patch.py (the same text the make job uses when it makes the voice itself)."""
+    The voice is made by render_hindi.py from the voice payload of pipeline/voice_patch.voice_payload(): the Gemini prebuilt voice Iapetus,
+    its description and the delivery style of this script (style, the default style when empty), the same payload the make job uses."""
     work = os.path.abspath('flow_work')
     os.makedirs(work, exist_ok=True)
     os.environ['WORK_DIR'] = work
     os.environ['OUT_DIR'] = os.path.abspath('flow_out')
     try:
-        from pipeline.run_shorts import VOICE
+        from pipeline import voice_patch as _vp
+        VOICE = _vp.voice_payload(style)
     except Exception:  # noqa
-        # no description or style here on purpose: voice_patch (below) supplies the description, render_hindi.py its native defaults
-        VOICE = {'language': 'hi', 'gemini_voice': 'designed',
+        # last resort: no description or style here, render_hindi.py uses its native defaults
+        VOICE = {'language': 'hi', 'gemini_voice': 'Iapetus',
                  'gemini_models': ['gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts'],
                  'voice_id': 'ibbx9zDYGvLgtYzRbqqG', 'fish_voice_id': '6366ea69a97d41ada9eb855a64e56fba', 'fish_model': 's2.1-pro-free'}
-        try:
-            from pipeline import voice_patch as _vp
-            VOICE['gemini_style'] = _vp.STYLE
-        except Exception:  # noqa
-            pass
     os.environ['PAYLOAD'] = json.dumps(VOICE, ensure_ascii=False)
     stub = types.ModuleType('render_hindi_overlay')   # the overlay module is only needed for drawing, not for the voice
     stub.STATE = {}
@@ -193,7 +203,9 @@ def cmd_prepare(a):
         return 0
     try:
         os.makedirs(os.path.dirname(os.path.abspath(a.voice)), exist_ok=True)
-        dur, rh = make_voice_file(narration, a.voice)
+        vstyle = voice_style_of(raw)
+        log('voice: Iapetus, ' + ('delivery style from the package' if vstyle else 'default delivery style'))
+        dur, rh = make_voice_file(narration, a.voice, vstyle)
     except Exception as e:  # noqa
         log('voiceover could not be made, Flow is skipped and the normal image providers are used: ' + str(e)[:200])
         return 0
