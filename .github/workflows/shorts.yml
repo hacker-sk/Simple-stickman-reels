@@ -118,9 +118,17 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      # ffmpeg: a cached static build instead of apt (apt took 21 minutes on a slow mirror). See pipeline/setup_ffmpeg.sh.
+      - name: Cache ffmpeg
+        if: steps.pkg.outputs.go == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/ffmpeg-static
+          key: ffmpeg-static-v1
+
       - name: Install ffmpeg
         if: steps.pkg.outputs.go == 'true'
-        run: sudo apt-get update -y && sudo apt-get install -y ffmpeg || echo "::warning::ffmpeg install failed, the voice step will fail and Flow is skipped"
+        run: bash pipeline/setup_ffmpeg.sh
 
       - name: Install Python packages
         if: steps.pkg.outputs.go == 'true'
