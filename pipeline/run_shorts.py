@@ -15,8 +15,9 @@ Inputs (environment, set by .github/workflows/shorts.yml):
                         stickman_sepia | village_storybook
   IMAGE_PROVIDER_ORDER  optional, copied to HINDI_IMAGE_ORDER for the renderer
   MUSIC_VOLUME          optional, level of the background song (default 0.14, see music_picker.py)
-  THUMB_DIR             optional, folder with the thumbnail image the flow job made (artifact flow-thumb); it is hosted publicly and
-                        sent to Buffer as the thumbnail of the YouTube, Instagram and Facebook posts
+  THUMB_DIR             optional, folder with the thumbnail image the flow job made (artifact flow-thumb). The renderer (pipeline/thumb_frame.py,
+                        installed by run_hindi.py) adds it as a 0.3 second silent last frame and writes its position to output/thumbnail.json;
+                        that position is sent to Buffer as the thumbnail offset (metadata.thumbnailOffset) of the Instagram post
 
 Voice: Gemini prebuilt voice Iapetus. The voice payload below (pipeline/voice_patch.py voice_payload) is what Gemini TTS gets, in BOTH places where
 the voiceover is made (the prepare job through pipeline/flow_images.py, and the make job through the render job file). It holds the voice
@@ -86,7 +87,7 @@ def build_job(prep, scenes, style_key, style, mood, hook=None, opts=None):
 def run_renderer(job):
     os.makedirs(WORK_DIR, exist_ok=True)
     os.makedirs(OUT_DIR, exist_ok=True)
-    for name in ('video.mp4', 'result.json'):
+    for name in ('video.mp4', 'result.json', 'thumbnail.json'):
         p = os.path.join(OUT_DIR, name)
         if os.path.exists(p):
             os.remove(p)
@@ -142,29 +143,21 @@ def validate_output():
     return result, urls, duration
 
 
-def thumbnail_url():
-    """Public URL of the thumbnail the flow job made (THUMB_DIR), or '' when there is none. Never raises: no thumbnail is not a failed run."""
-    d = env('THUMB_DIR')
-    if not d or not os.path.isdir(d):
-        return ''
+def thumbnail_offset_ms():
+    """Position (ms) of the thumbnail end frame the renderer added (output/thumbnail.json), or 0 when there is none. Never raises:
+    no thumbnail is not a failed run."""
     try:
-        for root, _dirs, files in os.walk(d):
-            for f in sorted(files):
-                p = os.path.join(root, f)
-                if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')) and os.path.getsize(p) > 5000:
-                    url = buffer.host_image(p)
-                    log('thumbnail ' + f + (' hosted: ' + url if url else ': no host accepted it, posting without a thumbnail'))
-                    return url
-    except Exception as e:  # noqa
-        log('thumbnail skipped: ' + buffer.redact(e)[:150])
-    return ''
+        with open(os.path.join(OUT_DIR, 'thumbnail.json'), encoding='utf-8') as fh:
+            return max(0, int(json.load(fh).get('offset_ms') or 0))
+    except Exception:  # noqa
+        return 0
 
 
-def publish_to_buffer(urls, title, description, thumb=''):
+def publish_to_buffer(urls, title, description, thumb_offset=0):
     """Try each hosted URL until YouTube or Instagram accepts the post."""
     last = None
     for url in urls:
-        out = buffer.publish(url, title, description, thumb)
+        out = buffer.publish(url, title, description, thumb_offset)
         last = out
         if out['post_ids'].get('YouTube') or out['post_ids'].get('Instagram'):
             out['video_url'] = url
@@ -216,9 +209,10 @@ def main():
         set_output('video_ready', 'true')
         lines += ['- Video: ' + str(round(duration, 1)) + 's, ' + str(result.get('size_mb')) + ' MB', '- Hosted: ' + ', '.join(urls)]
 
-        thumb = thumbnail_url()
-        lines.append('- Thumbnail: ' + (thumb if thumb else 'none (no thumbnail made or hosted)'))
-        out = publish_to_buffer(urls, prep['title'], prep['description'], thumb)
+        offset = thumbnail_offset_ms()
+        lines.append('- Thumbnail: ' + (('end frame added, Instagram thumbnail offset ' + str(offset) + ' ms') if offset
+                                         else 'none (no thumbnail image, so the video has no end frame)'))
+        out = publish_to_buffer(urls, prep['title'], prep['description'], offset)
         scheduled = sorted((out or {}).get('post_ids') or {})
         lines += ['- Buffer scheduled: ' + (', '.join(scheduled) or 'nothing')]
         for w in (out or {}).get('warnings') or []:
