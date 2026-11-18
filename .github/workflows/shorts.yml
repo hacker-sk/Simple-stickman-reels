@@ -282,8 +282,24 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install ffmpeg
-        run: sudo apt-get update -y && sudo apt-get install -y ffmpeg fonts-noto-core libraqm0 libfribidi0
+      # ffmpeg: the same cached static build as the prepare job (apt was very slow). Fonts: only the three small packages,
+      # kept as cached .deb files. See pipeline/setup_ffmpeg.sh and pipeline/setup_fonts.sh.
+      - name: Cache ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: ~/ffmpeg-static
+          key: ffmpeg-static-v1
+
+      - name: Cache font packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-debs
+          key: make-apt-debs-v1
+
+      - name: Install ffmpeg and fonts
+        run: |
+          bash pipeline/setup_ffmpeg.sh
+          bash pipeline/setup_fonts.sh
 
       - name: Install Python packages
         run: |
