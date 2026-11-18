@@ -14,12 +14,16 @@ name: Hindi Shorts
 #            image prompt with its scene number at the very beginning ([s01], [s02] ...) and uploads voice + word timing + tagged
 #            prompts as the "flow-prep" artifact. It also writes the thumbnail prompt file (shorts_thumb.json) when the package has a
 #            "thumbnail_prompt" (pipeline/thumb_prompt.py).
-#   flow:    only the browser work. Downloads "flow-prep", FIRST makes the thumbnail in PORTRAIT (its own Flow run, 5 minute wait cap,
-#            uploaded as the "flow-thumb" artifact), then generates the scene images with Google Flow in the normal settings (a fresh Flow
-#            run, so the settings switch back by themselves; ZAPI FLOW extension, same setup as flow-batch.yml, 10 minute wait cap; it also
-#            stops at once when Flow shows "We noticed some unusual activity"),
-#            matches every image to its prompt through Flow's own media ids, saves it as scene_NN.<ext>,
-#            retries scenes that have no usable image, and uploads the images + a manifest as the "flow-images" artifact.
+#   flow:    only the browser work, in ONE Flow session (one browser launch, one login). Downloads "flow-prep", then run_flow.js
+#            FIRST makes the thumbnail with the PORTRAIT settings (5 minute wait cap; copied to flow-thumb/ and uploaded as the
+#            "flow-thumb" artifact), then switches the Flow settings back to the scene settings with the same human-like clicks and
+#            VERIFIES them (if the switch does not verify, the Flow project is reloaded once in the same session and the settings are
+#            applied again; if they still show other settings nothing is submitted). Then it generates the scene images with Google Flow
+#            (ZAPI FLOW extension, same setup as flow-batch.yml, 10 minute wait cap; it also stops at once when Flow shows
+#            "We noticed some unusual activity"), matches every image to its prompt through Flow's own media ids, saves it as
+#            scene_NN.<ext>, retries scenes that have no usable image, and uploads the images + a manifest as the "flow-images" artifact.
+#            The thumbnail is taken out of the download folders before the scenes start, so it can never be mistaken for a scene image.
+#            A failed thumbnail never stops the scenes. Without a thumbnail prompt file the thumbnail pass is simply skipped.
 #   make:    always runs afterwards (also when prepare or flow failed). Reuses the prepared voice and word timing only when the
 #            narration hash matches (otherwise it makes its own voice and runs its own Whisper), gives each scene its scene_NN image,
 #            and the normal providers (IMAGE_PROVIDER_ORDER, Cloudflare first ...) make every image that is missing.
@@ -237,35 +241,9 @@ jobs:
           restore-keys: |
             flow-session-
 
-      - name: Make the thumbnail (portrait) before the scenes
-        # Own Flow run with the portrait setting. The scenes step below is a fresh Flow run with the normal settings, so Flow is
-        # switched back to the scene settings (and verified there) without anything extra. Skipped when the package had no thumbnail_prompt.
-        if: hashFiles('flow-batch/prompts/shorts_thumb.json') != ''
+      - name: Run Flow batch (thumbnail in portrait, then the scenes, one session)
         continue-on-error: true
-        timeout-minutes: 8
-        working-directory: flow-batch
-        env:
-          FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
-          FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
-          PROMPTS_FILE: prompts/shorts_thumb.json
-          FLOW_ASPECT: portrait
-          FLOW_COUNT: "1"
-          FLOW_MODEL: ${{ vars.FLOW_MODEL || 'Nano Banana Lite' }}
-        run: |
-          sed -i 's/"timeoutMinutes": *[0-9]*/"timeoutMinutes": 5/' config.json
-          xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js || echo "::warning::The thumbnail Flow run failed, no thumbnail this time"
-          mkdir -p ../flow-thumb
-          find downloads/final -maxdepth 1 -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' \) -exec cp {} ../flow-thumb/ \; || true
-          ls -la ../flow-thumb || true
-          # Clean slate for the scenes run: the thumbnail must not be collected as a scene image. Its debug files are kept as debug-thumb.
-          rm -rf debug-thumb
-          mv debug debug-thumb || true
-          rm -rf downloads
-          rm -rf "$HOME"/Downloads/* || true
-
-      - name: Run Flow batch
-        continue-on-error: true
-        timeout-minutes: 13
+        timeout-minutes: 22
         working-directory: flow-batch
         env:
           FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
@@ -274,9 +252,14 @@ jobs:
           FLOW_ASPECT: ${{ vars.FLOW_ASPECT || 'square' }}
           FLOW_COUNT: "1"
           FLOW_MODEL: ${{ vars.FLOW_MODEL || 'Nano Banana Lite' }}
+          # Thumbnail pass (same browser session, portrait settings). Empty when the package had no thumbnail_prompt.
+          THUMB_PROMPTS_FILE: ${{ hashFiles('flow-batch/prompts/shorts_thumb.json') != '' && 'prompts/shorts_thumb.json' || '' }}
+          THUMB_ASPECT: portrait
+          THUMB_MINUTES: "5"
+          THUMB_OUT_DIR: ../flow-thumb
         run: |
-          # The script waits at most 10 minutes (hard cap in run_flow.js) and stops at once on Flow's "unusual activity" error,
-          # then collects the images. The step cap is a little longer so collection and upload still finish.
+          # The scenes wait is at most 10 minutes (hard cap in run_flow.js), the thumbnail wait at most 5, and both stop at once on
+          # Flow's "unusual activity" error, then the images are collected. The step cap is a little longer so collection and upload still finish.
           sed -i 's/"timeoutMinutes": *[0-9]*/"timeoutMinutes": 10/' config.json
           xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
 
@@ -313,7 +296,6 @@ jobs:
           path: |
             flow-batch/downloads/rejected
             flow-batch/debug
-            flow-batch/debug-thumb
           if-no-files-found: ignore
           retention-days: 3
 
