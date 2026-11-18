@@ -87,7 +87,7 @@ function hookPage(page) {
     const r = await goto(url, o);
     if (!lib.done && /labs\.google|flow\.google/.test(String(url)) && process.env.FLOW_FRESH_LIBRARY !== "off") {
       try {
-        lib.done = await require("./fresh_library").ensureFreshLibrary(page, { moveTo, pause, type, wander });
+        lib.done = await require("./fresh_library").ensureFreshLibrary(page, { moveTo, pause, type, wander, rand });
       } catch (e) {
         console.log("::warning::Fresh library step failed: " + String(e && e.message).slice(0, 160));
         lib.done = true; // never create a second library after a half-finished attempt

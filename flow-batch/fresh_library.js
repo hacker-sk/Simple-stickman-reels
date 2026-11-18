@@ -15,7 +15,8 @@ async function ensureFreshLibrary(page, h) {
   await h.pause(1500, 3500);
   await h.wander(page);
 
-  // The + is the right-most clickable element on the same row as the "Library" label.
+  // The sidebar row reads: [folder] Library [+] [^]. The + is the LEFT-most clickable element after the "Library" label
+  // on the same row; the right-most one is the collapse arrow, which must never be clicked.
   const lb = await label.boundingBox();
   const pt = lb && await page.evaluate((r) => {
     let best = null;
@@ -23,8 +24,10 @@ async function ensureFreshLibrary(page, h) {
       const b = el.getBoundingClientRect();
       if (!b.width || !b.height) continue;
       if (Math.abs(b.y + b.height / 2 - (r.y + r.height / 2)) > r.height) continue;
-      if (b.x < r.x + r.width || b.x > r.x + 300) continue;
-      if (!best || b.x > best.x) best = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+      if (b.x < r.x + r.width - 2 || b.x > r.x + 300) continue;
+      const hint = ((el.getAttribute("aria-label") || "") + " " + (el.textContent || "")).toLowerCase();
+      if (/expand|collapse|arrow_up|arrow_down|chevron|keyboard_arrow/.test(hint)) continue;
+      if (!best || b.x < best.x) best = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
     }
     return best;
   }, lb);
