@@ -7,18 +7,20 @@ Pipeline: input -> topic -> Hindi script -> image prompts -> render (existing re
 Inputs (environment, set by .github/workflows/shorts.yml):
   IDEA, SCRIPT          manual idea / finished script (both empty = scheduled run, a topic is picked automatically)
   PACKAGE               finished package JSON from Claude chat (title, description, mood, hook, scenes with narration +
-                        image_prompt, see pipeline/package.py); skips topic, script and image-prompt steps
+                        image_prompt, see pipeline/package.py); skips topic, script and image-prompt steps. It can also carry
+                        voice_style (delivery style of this script), random_bg (true = random artwork background, default plain black)
+                        and bgm (true = background music, default none)
   SCRIPT_MODE           auto | truth | story   (scheduled runs only)
   ART_STYLE             random (default) | indian_storybook | sketchbook_doodle | whimsical_indian | editorial_pencil |
                         stickman_sepia | village_storybook
   IMAGE_PROVIDER_ORDER  optional, copied to HINDI_IMAGE_ORDER for the renderer
   MUSIC_VOLUME          optional, level of the background song (default 0.14, see music_picker.py)
 
-Voice: the VOICE payload below is what Gemini TTS gets, in BOTH places where the voiceover is made (the prepare job through
-pipeline/flow_images.py, and the make job through the render job file). The voice text lives in pipeline/voice_patch.py (NAME, DESC,
-STYLE) and is installed into render_hindi by voice_patch.apply_voice() in both places, because render_hindi.py itself reads its own
-constants for the designed voice. gemini_style is the delivery style and travels in the payload. When prepare made the voice, the
-make job reuses it (and its word timing) instead of making it again.
+Voice: Gemini prebuilt voice Iapetus. The voice payload below (pipeline/voice_patch.py voice_payload) is what Gemini TTS gets, in BOTH places where
+the voiceover is made (the prepare job through pipeline/flow_images.py, and the make job through the render job file). It holds the voice
+description plus the delivery style written for the script (package field voice_style; the default style when it has none). When prepare
+made the voice, the make job reuses it (and its word timing) instead of making it again.
+Look and sound: pipeline/look_patch.py (installed by run_hindi.py) reads random_bg and bgm from the job file.
 """
 import json
 import os
@@ -36,17 +38,7 @@ OUT_DIR = os.environ.get('OUT_DIR', 'output')
 WORK_DIR = os.environ.get('WORK_DIR', 'work')
 RENDERER = os.environ.get('RENDER_SCRIPT', os.path.join(ROOT, 'render_hindi.py'))
 RENDER_TIMEOUT = 80 * 60
-VOICE = {
-    'language': 'hi', 'gemini_voice': 'designed',
-    # the voice Gemini designs (created once per API key, looked up by this name afterwards)
-    'gemini_voice_name': voice_patch.NAME,
-    'gemini_voice_desc': voice_patch.DESC,
-    # how it delivers every line
-    'gemini_style': voice_patch.STYLE,
-    'gemini_models': ['gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts'],
-    'voice_id': 'ibbx9zDYGvLgtYzRbqqG', 'tts_model': 'eleven_multilingual_v2',
-    'fish_voice_id': '6366ea69a97d41ada9eb855a64e56fba', 'fish_model': 's2.1-pro-free',
-}
+VOICE = voice_patch.voice_payload()     # default style; build_job() adds the style written for the script
 
 
 def log(*a):
@@ -74,13 +66,16 @@ def summary(lines):
         print(text)
 
 
-def build_job(prep, scenes, style_key, style, mood, hook=None):
+def build_job(prep, scenes, style_key, style, mood, hook=None, opts=None):
     """Render payload. The renderer reads it from the job file (payload.job_path).
 
     Same keys as n8n's 'Build Render Payload' (no style_look: the image prompts already carry the style),
-    plus an optional hook for packages that bring their own."""
-    job = dict(VOICE)
-    job.update({'title': prep['title'], 'mood': mood, 'art_style': style['name'], 'scenes': scenes})
+    plus an optional hook for packages that bring their own. opts is the parsed package (voice_style, random_bg, bgm);
+    without a package the defaults apply: default voice style, plain black background, no music."""
+    opts = opts or {}
+    job = voice_patch.voice_payload(opts.get('voice_style'))
+    job.update({'title': prep['title'], 'mood': mood, 'art_style': style['name'], 'scenes': scenes,
+                'random_bg': bool(opts.get('random_bg')), 'bgm': bool(opts.get('bgm'))})
     if hook:
         job['hook'] = hook
     return job
@@ -192,8 +187,11 @@ def main():
             chunks = script.number_chunks(prep, style_key)
             scenes, _story = image_prompts.write_image_prompts(prep, chunks, style_key)
         lines += ['- Title: ' + prep['title'], '- Style: ' + style['name'] + ', mood ' + mood + ', ' + str(len(scenes)) + ' scenes']
+        lines.append('- Voice: Iapetus, ' + ('own delivery style from the package' if pkg and pkg.get('voice_style') else 'default delivery style') +
+                     ' | Background: ' + ('random artwork' if pkg and pkg.get('random_bg') else 'plain black') +
+                     ' | Music: ' + ('on (' + mood + ')' if pkg and pkg.get('bgm') else 'off'))
 
-        run_renderer(build_job(prep, scenes, style_key, style, mood, hook))
+        run_renderer(build_job(prep, scenes, style_key, style, mood, hook, pkg))
         result, urls, duration = validate_output()
         set_output('video_ready', 'true')
         lines += ['- Video: ' + str(round(duration, 1)) + 's, ' + str(result.get('size_mb')) + ' MB', '- Hosted: ' + ', '.join(urls)]
