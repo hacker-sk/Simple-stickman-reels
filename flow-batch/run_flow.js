@@ -39,6 +39,16 @@ const MODEL_CHECK = validateModel(WANT.model, cfg.allowedModels);
 if (!MODEL_CHECK.ok) throw new Error("Invalid model: " + MODEL_CHECK.reason);
 const RETRY_PASSES = cfg.retryFailedPasses === undefined ? 1 : cfg.retryFailedPasses;
 
+// Optional thumbnail pass, in the SAME browser session: it runs first with its own settings (portrait by default), the image is
+// copied to THUMB_OUT_DIR, then Flow is switched back to the scene settings (and verified) before the scenes are submitted.
+// Set THUMB_PROMPTS_FILE to switch it on; leave it empty for the old single-batch behaviour.
+const THUMB_FILE = (process.env.THUMB_PROMPTS_FILE || "").trim();
+const THUMB_OUT = path.resolve(__dirname, process.env.THUMB_OUT_DIR || "../flow-thumb");
+const THUMB_ASPECT = (process.env.THUMB_ASPECT || "portrait").trim();
+const THUMB_MINUTES = Math.min(parseInt(process.env.THUMB_MINUTES || "5", 10) || 5, 10);
+const THUMB_ASP = resolveAspect(THUMB_ASPECT);
+if (THUMB_FILE && !THUMB_ASP) throw new Error("Unknown thumbnail aspect '" + THUMB_ASPECT + "'. Use portrait, landscape, square, 3:4 or 4:3.");
+
 const EVID = { timeline: [], console: [], pageErrors: [], http: [], requestFailed: [], flow: {}, results: [] };
 function mark(ev) { EVID.timeline.push({ t: new Date().toISOString(), event: ev }); }
 function redact(s) { return String(s || '').replace(/[A-Za-z0-9_-]{40,}/g, '[redacted]').slice(0, 300); }
@@ -83,10 +93,12 @@ function parseQueue(text, prompts) {
 
 // .json: array of strings or {prompt}. .txt: prompts separated by a blank line.
 // Each prompt is flattened to ONE line because ZAPI FLOW queues one prompt per line.
-function loadPrompts() {
-  const text = fs.readFileSync(PROMPTS_FILE, "utf8").replace(/\r/g, "");
+// `file` is optional (relative to flow-batch); without it the main PROMPTS_FILE is read.
+function loadPrompts(file) {
+  const src = file ? path.resolve(__dirname, file) : PROMPTS_FILE;
+  const text = fs.readFileSync(src, "utf8").replace(/\r/g, "");
   let list;
-  if (PROMPTS_FILE.endsWith(".txt")) list = text.split(/\n[ \t]*\n/);
+  if (src.endsWith(".txt")) list = text.split(/\n[ \t]*\n/);
   else list = JSON.parse(text).map((p) => (typeof p === "string" ? p : p.prompt));
   return list.filter(Boolean).map((p) => p.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean);
 }
@@ -192,7 +204,7 @@ function clearDir(dir) {
 // Collect complete, valid images from every place Chrome may have written them (subfolders included). Safe to call more than once.
 // Images with the requested shape go to downloads/final; wrong-shaped ones go to downloads/rejected and the rest of the batch is kept.
 // When the prompt->media mapping is available, each image whose filename carries a known Flow media UUID is saved as scene_NN.<ext>
-// (NN = prompt number); any other accepted image is saved as unmatched_<name> so it can never be mistaken for a scene.
+// (NN = prompt number); any other accepted image is saved as unmatched_<n> so it can never be mistaken for a scene.
 // Without a mapping the old behaviour applies (descriptive names, capture timestamp prefix removed).
 function collectImages() {
   clearDir(FINAL_DIR);
@@ -255,6 +267,40 @@ function collectImages() {
   return { accepted, rejected, items, skipped, scenes, missingScenes, mapped };
 }
 
+// Takes the thumbnail out of the download folders: the first valid image with the thumbnail's shape is copied to THUMB_OUT as
+// thumbnail.<ext>, then EVERY downloaded file is removed so the thumbnail can never be collected as a scene image later.
+function takeThumbnail() {
+  const files = [];
+  listFiles(DL_DIR, files);
+  listFiles(path.join(os.homedir(), "Downloads"), files);
+  files.sort((a, b) => { try { return fs.statSync(a).mtimeMs - fs.statSync(b).mtimeMs; } catch (e) { return 0; } });
+  let saved = null;
+  const notes = [];
+  for (const full of files) {
+    const f = path.basename(full);
+    if (/\.(crdownload|tmp|part)$/i.test(f)) { notes.push({ file: f, skipped: "incomplete" }); continue; }
+    let buf;
+    try { buf = fs.readFileSync(full); } catch (e) { continue; }
+    const ext = imgType(buf);
+    if (!ext || buf.length < 10000) { notes.push({ file: f, skipped: "not a valid image / too small" }); continue; }
+    const size = imageSize(buf);
+    const ok = matchesAspect(size, THUMB_ASP);
+    notes.push({ file: f.replace(/^\d{10,}-/, ""), width: size ? size.w : null, height: size ? size.h : null, ratio_ok: ok });
+    if (ok && !saved) {
+      fs.mkdirSync(THUMB_OUT, { recursive: true });
+      saved = "thumbnail" + ext;
+      fs.copyFileSync(full, path.join(THUMB_OUT, saved));
+    }
+  }
+  for (const full of files) { try { fs.rmSync(full, { force: true }); } catch (e) {} }
+  clearDir(RAW_DIR);
+  try {
+    fs.mkdirSync(path.join(DEBUG_DIR, "thumb"), { recursive: true });
+    fs.writeFileSync(path.join(DEBUG_DIR, "thumb", "thumb-files.json"), JSON.stringify({ saved, notes }, null, 2));
+  } catch (e) {}
+  return { saved, notes };
+}
+
 async function dumpUiText(ui, name) {
   const t = await ui.locator("body").innerText().catch(() => "");
   fs.writeFileSync(path.join(DEBUG_DIR, name), t);
@@ -267,6 +313,7 @@ async function dumpUiText(ui, name) {
   if (!prompts.length) throw new Error("No prompts found in " + PROMPTS_FILE);
   console.log("Prompts loaded:", prompts.length);
   console.log("Wanted Flow settings:", JSON.stringify(WANT), "-> ratio", ASP.label, "| model check:", JSON.stringify(MODEL_CHECK));
+  if (THUMB_FILE) console.log("Thumbnail pass on (same session):", THUMB_FILE, "->", THUMB_ASP.label, "then back to", ASP.label);
   TRACKER = createMediaTracker(prompts, DEBUG_DIR);
 
   const context = await chromium.launchPersistentContext(path.join(__dirname, "profile"), {
@@ -341,44 +388,37 @@ async function dumpUiText(ui, name) {
   if (!authed) throw new Error("AUTH FAILED: Flow did not open the project (ended on " + safeUrl(flow.url()) + "). Google rejected the cookies (expired, rotated or blocked for this server) - re-export fresh cookies from a private/incognito window and update FLOW_COOKIES_B64");
   try { saveCookies(await context.cookies()); } catch (e) {}
 
-  EVID.flow.settings = await applyFlowSettings(flow, WANT, DEBUG_DIR);
-  console.log("Flow settings verified:", EVID.flow.settings.verified, "| verdict:", EVID.flow.settings.verdict);
-  // Stop BEFORE submitting when Flow positively shows other settings.
-  if (EVID.flow.settings.verdict === "wrong" && cfg.abortOnSettingsMismatch !== false) {
-    throw new Error("SETTINGS MISMATCH: Flow shows '" + EVID.flow.settings.chipAfter + "' but wanted " + WANT.model + " / " + ASP.label + " / x" + WANT.count + ". Nothing was submitted. See debug/02b-settings-*.png and debug/02b-popover.html");
+  // The ZAPI FLOW extension page (second tab). Opened on first use, so a run without a thumbnail behaves as before:
+  // settings first, then this page.
+  let ui = null;
+  async function openUi() {
+    if (ui) return ui;
+    ui = await context.newPage();
+    await ui.goto("chrome-extension://" + extId + "/" + cfg.extensionPage);
+    await ui.waitForTimeout(4000);
+    await ui.screenshot({ path: path.join(DEBUG_DIR, "02-ui.png") });
+    await dumpUiText(ui, "02-ui-text.txt");
+
+    // Serial number OFF + auto download ON, verified (result is written to debug/02d-serial-toggle.json).
+    await turnOffSerial(ui, DEBUG_DIR);
+
+    // Diagnostic only: record the extension's own generation-settings controls, then close the section again.
+    try {
+      const gs = ui.getByText(/generation settings/i).first();
+      await gs.click({ timeout: 3000 });
+      await ui.waitForTimeout(800);
+      await dumpUiText(ui, "02c-ui-settings-text.txt");
+      const ctrls = await ui.evaluate(() => [...document.querySelectorAll('input,select,textarea,button')].map((e) => ({ tag: e.tagName.toLowerCase(), id: e.id, type: e.type || '', label: String(e.getAttribute('aria-label') || e.innerText || e.value || '').slice(0, 40) })).slice(0, 80));
+      fs.writeFileSync(path.join(DEBUG_DIR, "02c-ui-controls.json"), JSON.stringify(ctrls, null, 2));
+      await ui.screenshot({ path: path.join(DEBUG_DIR, "02c-ui-settings.png") });
+      await gs.click({ timeout: 3000 }).catch(() => {});
+    } catch (e) { console.log("Extension settings section not inspected:", String(e.message).slice(0, 100)); }
+    return ui;
   }
-  // An unreadable chip is NOT verified. By default the run continues (the per-image ratio check still protects the output)
-  // but the batch can never end as SUCCESS. Set abortOnUnverifiedSettings to true in config.json to stop instead.
-  if (!EVID.flow.settings.verified && EVID.flow.settings.verdict === "unknown") {
-    console.log("::warning::Flow settings could NOT be verified (chip unreadable). Batch cannot be reported as SUCCESS.");
-    if (cfg.abortOnUnverifiedSettings === true) {
-      throw new Error("SETTINGS UNVERIFIED: could not read the Flow settings chip and abortOnUnverifiedSettings is true. Nothing was submitted. See debug/02b-settings-*.png");
-    }
-  }
 
-  const ui = await context.newPage();
-  await ui.goto("chrome-extension://" + extId + "/" + cfg.extensionPage);
-  await ui.waitForTimeout(4000);
-  await ui.screenshot({ path: path.join(DEBUG_DIR, "02-ui.png") });
-  await dumpUiText(ui, "02-ui-text.txt");
-
-  // Serial number OFF + auto download ON, verified (result is written to debug/02d-serial-toggle.json).
-  await turnOffSerial(ui, DEBUG_DIR);
-
-  // Diagnostic only: record the extension's own generation-settings controls, then close the section again.
-  try {
-    const gs = ui.getByText(/generation settings/i).first();
-    await gs.click({ timeout: 3000 });
-    await ui.waitForTimeout(800);
-    await dumpUiText(ui, "02c-ui-settings-text.txt");
-    const ctrls = await ui.evaluate(() => [...document.querySelectorAll('input,select,textarea,button')].map((e) => ({ tag: e.tagName.toLowerCase(), id: e.id, type: e.type || '', label: String(e.getAttribute('aria-label') || e.innerText || e.value || '').slice(0, 40) })).slice(0, 80));
-    fs.writeFileSync(path.join(DEBUG_DIR, "02c-ui-controls.json"), JSON.stringify(ctrls, null, 2));
-    await ui.screenshot({ path: path.join(DEBUG_DIR, "02c-ui-settings.png") });
-    await gs.click({ timeout: 3000 }).catch(() => {});
-  } catch (e) { console.log("Extension settings section not inspected:", String(e.message).slice(0, 100)); }
-
-  // Hard 10 minute cap on the whole wait, whatever config.json or the workflow says.
-  const deadline = Date.now() + Math.min(cfg.timeoutMinutes, 10) * 60000;
+  // The wait for each pass has its own cap (thumbnail: THUMB_MINUTES, scenes: config timeoutMinutes, never more than 10).
+  let deadline = Date.now();
+  function setDeadline(minutes) { deadline = Date.now() + Math.min(minutes, 10) * 60000; }
   // Only account/quota problems end the wait early. A single failed prompt never does.
   const fatalRe = /sign in|not logged|quota|limit/i;
   let completionVia = "";
@@ -430,6 +470,94 @@ async function dumpUiText(ui, name) {
     await ui.waitForFunction((sel) => { const b = document.querySelector(sel); return b && !b.disabled; }, cfg.selectors.startButton, { timeout: 90000 });
   }
 
+  // Thumbnail pass: portrait settings -> one image -> copied out of the download folders. Never throws: a failed thumbnail
+  // must not stop the scenes. Returns { ran, saved, blocked } for the summary.
+  async function thumbnailPass() {
+    const out = { ran: false, saved: null, blocked: false };
+    try {
+      const tPrompts = loadPrompts(THUMB_FILE);
+      if (!tPrompts.length) { console.log("Thumbnail pass: no prompt in " + THUMB_FILE + " - skipped"); return out; }
+      mark('thumb_pass_start');
+      const tdir = path.join(DEBUG_DIR, "thumb");
+      fs.mkdirSync(tdir, { recursive: true });
+      await flow.bringToFront().catch(() => {});
+      const tWant = Object.assign({}, WANT, { aspect: THUMB_ASPECT, count: 1 });
+      const ts = await applyFlowSettings(flow, tWant, tdir);
+      EVID.flow.thumbSettings = ts;
+      console.log("Thumbnail settings verified:", ts.verified, "| verdict:", ts.verdict);
+      if (ts.verdict === "wrong") {
+        console.log("::warning::Flow shows other settings than the thumbnail wants (" + ts.chipAfter + ") - thumbnail skipped, nothing submitted");
+        return out;
+      }
+      await openUi();
+      const before = await ui.locator(cfg.selectors.status).innerText().catch(() => "");
+      await submit(tPrompts);
+      await ui.locator(cfg.selectors.startButton).click();
+      out.ran = true;
+      await flow.bringToFront().catch(() => {});
+      mark('thumb_start_clicked');
+      console.log("Thumbnail start clicked");
+      await flow.waitForTimeout(8000);
+      setDeadline(THUMB_MINUTES);
+      const tDone = await waitForCompletion(before, tPrompts.length, tPrompts);
+      console.log("Thumbnail queue finished:", tDone);
+      await flow.screenshot({ path: path.join(tdir, "thumb-end.png") }).catch(() => {});
+      await dumpUiText(ui, "thumb-ui-end-text.txt");
+      // Let the download land BEFORE the folders are emptied.
+      await flow.waitForTimeout(cfg.settleSeconds * 1000);
+      const t = takeThumbnail();
+      out.saved = t.saved;
+      out.blocked = blocked;
+      mark('thumb_pass_end_' + (t.saved ? 'saved' : 'none'));
+      console.log(t.saved ? "Thumbnail saved: " + t.saved + " (" + THUMB_ASP.label + ")" : "::warning::No usable thumbnail image came back - no thumbnail this time");
+      try { saveCookies(await context.cookies()); } catch (e) {}
+    } catch (e) {
+      console.log("::warning::Thumbnail pass failed, continuing with the scenes:", String(e && e.message).slice(0, 200));
+      mark('thumb_pass_error');
+    }
+    // A block seen during the thumbnail is re-detected by the scenes wait if it is still on screen.
+    blocked = false;
+    return out;
+  }
+
+  // Scene settings (config + env), verified. After a thumbnail pass Flow is toggled back by the same clicks; if that does not
+  // verify, the Flow project is reloaded once in the SAME session (no new login) and the settings are applied again.
+  async function applySceneSettings(afterThumb) {
+    await flow.bringToFront().catch(() => {});
+    EVID.flow.settings = await applyFlowSettings(flow, WANT, DEBUG_DIR);
+    if (afterThumb && EVID.flow.settings.verdict !== "ok") {
+      console.log("::warning::Switching back to the scene settings did not verify (" + EVID.flow.settings.verdict + ") - reloading the Flow project once in this session and trying again");
+      mark('scene_settings_reload');
+      await flow.goto(FLOW_URL, { waitUntil: "domcontentloaded" });
+      await flow.waitForTimeout(12000);
+      EVID.flow.settings = await applyFlowSettings(flow, WANT, DEBUG_DIR);
+    }
+    console.log("Flow settings verified:", EVID.flow.settings.verified, "| verdict:", EVID.flow.settings.verdict);
+    // Stop BEFORE submitting when Flow positively shows other settings.
+    if (EVID.flow.settings.verdict === "wrong" && cfg.abortOnSettingsMismatch !== false) {
+      throw new Error("SETTINGS MISMATCH: Flow shows '" + EVID.flow.settings.chipAfter + "' but wanted " + WANT.model + " / " + ASP.label + " / x" + WANT.count + ". Nothing was submitted. See debug/02b-settings-*.png and debug/02b-popover.html");
+    }
+    // An unreadable chip is NOT verified. By default the run continues (the per-image ratio check still protects the output)
+    // but the batch can never end as SUCCESS. Set abortOnUnverifiedSettings to true in config.json to stop instead.
+    if (!EVID.flow.settings.verified && EVID.flow.settings.verdict === "unknown") {
+      console.log("::warning::Flow settings could NOT be verified (chip unreadable). Batch cannot be reported as SUCCESS.");
+      if (cfg.abortOnUnverifiedSettings === true) {
+        throw new Error("SETTINGS UNVERIFIED: could not read the Flow settings chip and abortOnUnverifiedSettings is true. Nothing was submitted. See debug/02b-settings-*.png");
+      }
+    }
+  }
+
+  // ---- Pass 1 (optional): thumbnail in its own settings, same session ----
+  let thumb = { ran: false, saved: null, blocked: false };
+  if (THUMB_FILE) thumb = await thumbnailPass();
+
+  // ---- Pass 2: scenes in the normal settings ----
+  await applySceneSettings(thumb.ran);
+  await openUi();
+  const staleStatus = thumb.ran ? await ui.locator(cfg.selectors.status).innerText().catch(() => "") : "";
+
+  setDeadline(cfg.timeoutMinutes);
+
   try {
     await submit(prompts);
   } catch (e) {
@@ -453,7 +581,7 @@ async function dumpUiText(ui, name) {
   await dumpUiText(ui, "03b-started-text.txt");
   await flow.screenshot({ path: path.join(DEBUG_DIR, "03c-flow-started.png") });
 
-  let done = await waitForCompletion("", prompts.length, prompts);
+  let done = await waitForCompletion(staleStatus, prompts.length, prompts);
   console.log("Extension finished:", done);
   await flow.screenshot({ path: path.join(DEBUG_DIR, "04-end.png") });
   await ui.screenshot({ path: path.join(DEBUG_DIR, "04-ui-end.png") });
@@ -528,7 +656,8 @@ async function dumpUiText(ui, name) {
     generation_completed: completed, generation_failed: failedPrompts, generation_unfinished: unfinished,
     expected_images: expectedImages, images_accepted: img.accepted, images_wrong_ratio: img.rejected,
     over_generated: over.over, extra_images: over.extra,
-    mapping_available: img.mapped, missing_scenes: img.missingScenes
+    mapping_available: img.mapped, missing_scenes: img.missingScenes,
+    thumbnail: THUMB_FILE ? { requested: true, ratio: THUMB_ASP.label, ran: thumb.ran, saved: thumb.saved, settings_verdict: EVID.flow.thumbSettings ? EVID.flow.thumbSettings.verdict : null } : { requested: false }
   };
   writeEvidence();
   fs.writeFileSync(path.join(FINAL_DIR, "manifest.json"), JSON.stringify({ generated_at: new Date().toISOString(), batch_status: verdict.status, status_reasons: verdict.reasons, summary: EVID.summary, prompts: EVID.results, scenes: img.scenes, missing_scenes: img.missingScenes, images: img.items, note: "scene_NN.* = image for prompt NN, matched by Flow media UUID. unmatched_* = accepted images that map to no scene. Scenes listed in missing_scenes need the Cloudflare fallback. When mapping_available is false, images keep Flow's names and scene order is unknown." }, null, 2));
@@ -543,7 +672,8 @@ async function dumpUiText(ui, name) {
       "| Prompts | " + s.prompts + " |", "| Wanted | " + s.wanted.model + ", " + s.wanted.ratio + ", x" + s.wanted.per_prompt + " |",
       "| Settings verified | " + s.settings_verified + " (" + s.settings_verdict + ") |", "| Generation completed / failed / unfinished | " + s.generation_completed + " / " + s.generation_failed + " / " + s.generation_unfinished + " |",
       "| Images kept (right ratio) | " + s.images_accepted + " of " + s.expected_images + " expected |", "| Images rejected (wrong ratio) | " + s.images_wrong_ratio + " (in downloads/rejected) |",
-      "| Extra images beyond request | " + s.extra_images + " |", "| Scene mapping | " + (s.mapping_available ? "UUID match, missing scenes: " + (s.missing_scenes.join(",") || "none") : "NOT available") + " |", ""].join(NL);
+      "| Extra images beyond request | " + s.extra_images + " |", "| Scene mapping | " + (s.mapping_available ? "UUID match, missing scenes: " + (s.missing_scenes.join(",") || "none") : "NOT available") + " |",
+      "| Thumbnail | " + (s.thumbnail.requested ? (s.thumbnail.saved ? "saved (" + s.thumbnail.ratio + ")" : "none (ran: " + s.thumbnail.ran + ")") : "not requested") + " |", ""].join(NL);
     try { fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + NL); } catch (e) {}
   }
   if (blocked) {
