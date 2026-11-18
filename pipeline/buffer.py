@@ -4,8 +4,10 @@ BUFFER_TOKEN comes from a GitHub Secret. The channel ids come from repository va
 BUFFER_YOUTUBE_CHANNEL_ID, BUFFER_INSTAGRAM_CHANNEL_ID and (optional) BUFFER_FACEBOOK_CHANNEL_ID.
 The token is never logged: every message that leaves this module is passed through redact().
 
-Thumbnail: publish() can take the public URL of a thumbnail image (host_image() makes one); it is sent as the video asset's thumbnailUrl on all
-three channels. A channel that does not accept it gets the same post again without the thumbnail, with a warning.
+Thumbnail: Buffer's API rejects a custom thumbnail image on a video (thumbnailUrl), so the renderer puts the thumbnail at the very end of the
+video (pipeline/thumb_frame.py) and publish() takes the position of that frame in milliseconds. It is sent as the video asset's
+metadata.thumbnailOffset. Buffer supports it for Instagram (also TikTok and Pinterest) only, so only the Instagram post gets it; YouTube and
+Facebook are posted as before. When Buffer refuses it, the same post is made again without it, with a warning.
 """
 import datetime
 import json
@@ -81,43 +83,10 @@ def list_channels(token=None):
     return data.get('channels') or []
 
 
-def host_image(path):
-    """Public URL of an image file for Buffer (it fetches the thumbnail itself, later). The image is saved as a JPEG first (smaller).
-    catbox.moe keeps files for good, uguu.se only for a few hours, so catbox is tried first. Returns '' when no host accepted it."""
-    send = path
-    try:
-        from PIL import Image
-        im = Image.open(path).convert('RGB')
-        send = path + '.thumb.jpg'
-        im.save(send, 'JPEG', quality=90)
-    except Exception as e:  # noqa
-        log('thumbnail not converted to JPEG, sending the original: ' + str(e)[:100])
-        send = path
-    name = 'thumbnail.jpg' if send.endswith('.jpg') else os.path.basename(send)
-    mime = 'image/jpeg' if send.endswith('.jpg') else 'application/octet-stream'
-    try:
-        with open(send, 'rb') as fh:
-            r = requests.post('https://catbox.moe/user/api.php', data={'reqtype': 'fileupload'}, files={'fileToUpload': (name, fh, mime)}, timeout=120)
-        u = r.text.strip()
-        if r.status_code == 200 and u.startswith('http'):
-            log('thumbnail hosted on catbox')
-            return u
-    except Exception as e:  # noqa
-        log('catbox thumbnail upload failed: ' + str(e)[:120])
-    try:
-        with open(send, 'rb') as fh:
-            r = requests.post('https://uguu.se/upload?output=text', files={'files[]': (name, fh, mime)}, timeout=120)
-        u = r.text.strip()
-        if r.status_code == 200 and u.startswith('http'):
-            log('thumbnail hosted on uguu')
-            return u
-    except Exception as e:  # noqa
-        log('uguu thumbnail upload failed: ' + str(e)[:120])
-    return ''
-
-
-def _create_post(token, channel_id, text, due_at, video_url, metadata, thumb_url=''):
-    video = 'url: ' + json.dumps(video_url) + ((', thumbnailUrl: ' + json.dumps(thumb_url)) if thumb_url else '')
+def _create_post(token, channel_id, text, due_at, video_url, metadata, thumb_offset=0):
+    video = 'url: ' + json.dumps(video_url)
+    if thumb_offset:
+        video += ', metadata: { thumbnailOffset: ' + str(int(thumb_offset)) + ' }'
     q = ('mutation { createPost(input: { text: ' + json.dumps(text, ensure_ascii=False) + ', channelId: ' + json.dumps(channel_id) +
          ', schedulingType: automatic, mode: customScheduled, dueAt: ' + json.dumps(due_at) +
          ', assets: [{ video: { ' + video + ' } }], metadata: { ' + metadata +
@@ -129,16 +98,16 @@ def _create_post(token, channel_id, text, due_at, video_url, metadata, thumb_url
     return (cp.get('post') or {}).get('id')
 
 
-def _post(token, name, channel_id, text, due_at, video_url, metadata, thumb_url, out):
-    """With the thumbnail first; when the channel does not take it, the same post again without it (plus a warning)."""
+def _post(token, name, channel_id, text, due_at, video_url, metadata, thumb_offset, out):
+    """With the thumbnail offset first; when Buffer does not take it, the same post again without it (plus a warning)."""
     try:
-        return _create_post(token, channel_id, text, due_at, video_url, metadata, thumb_url)
+        return _create_post(token, channel_id, text, due_at, video_url, metadata, thumb_offset)
     except Exception as e:  # noqa
-        if not thumb_url:
+        if not thumb_offset:
             raise
-        out['warnings'].append(name + ': thumbnail not accepted (' + redact(e)[:150] + '), posted without it')
-        log(name + ': thumbnail not accepted, posting without it')
-        return _create_post(token, channel_id, text, due_at, video_url, metadata, '')
+        out['warnings'].append(name + ': thumbnail offset not accepted (' + redact(e)[:150] + '), posted without it')
+        log(name + ': thumbnail offset not accepted, posting without it')
+        return _create_post(token, channel_id, text, due_at, video_url, metadata, 0)
 
 
 def due_at(seconds=60):
@@ -146,9 +115,11 @@ def due_at(seconds=60):
     return d.strftime('%Y-%m-%dT%H:%M:%S.') + '%03dZ' % (d.microsecond // 1000)
 
 
-def publish(video_url, title, description, thumbnail_url=''):
-    """Schedule the video on YouTube and Instagram (required) and Facebook (best effort), with the thumbnail when one is given.
+def publish(video_url, title, description, thumbnail_offset_ms=0):
+    """Schedule the video on YouTube and Instagram (required) and Facebook (best effort).
 
+    thumbnail_offset_ms: position of the thumbnail frame in the video (the end frame added by pipeline/thumb_frame.py), 0 = none.
+    Sent to Instagram only (the only one of the three channels Buffer supports it for).
     Returns {'results': [...], 'errors': [...], 'warnings': [...], 'post_ids': {...}}.
     'errors' lists YouTube / Instagram failures; the caller decides what that means for the run."""
     token = _token()
@@ -163,11 +134,11 @@ def publish(video_url, title, description, thumbnail_url=''):
     due = due_at(60)
     out = {'results': [], 'errors': [], 'warnings': [], 'post_ids': {}}
     short = cap_tags(title + NL + NL + description, 5)
-    jobs = [('YouTube', yt_id, description, 'youtube: { title: ' + json.dumps(title, ensure_ascii=False) + ', categoryId: "22" }'),
-            ('Instagram', ig_id, short, 'instagram: { type: reel, shouldShareToFeed: true }')]
-    for name, cid, text, meta in jobs:
+    jobs = [('YouTube', yt_id, description, 'youtube: { title: ' + json.dumps(title, ensure_ascii=False) + ', categoryId: "22" }', 0),
+            ('Instagram', ig_id, short, 'instagram: { type: reel, shouldShareToFeed: true }', int(thumbnail_offset_ms or 0))]
+    for name, cid, text, meta, offset in jobs:
         try:
-            pid = _post(token, name, cid, text, due, video_url, meta, thumbnail_url, out)
+            pid = _post(token, name, cid, text, due, video_url, meta, offset, out)
             out['results'].append(name + ' scheduled')
             out['post_ids'][name] = pid
             log(name + ' scheduled')
@@ -182,7 +153,7 @@ def publish(video_url, title, description, thumbnail_url=''):
                 raise RuntimeError('several Facebook channels found, set BUFFER_FACEBOOK_CHANNEL_ID: ' + json.dumps(fbs, ensure_ascii=False)
                                    if fbs else 'no Facebook channel found in Buffer')
             fb_id = pick['id']
-        pid = _post(token, 'Facebook', fb_id, short, due, video_url, 'facebook: { type: reel }', thumbnail_url, out)
+        pid = _post(token, 'Facebook', fb_id, short, due, video_url, 'facebook: { type: reel }', 0, out)
         out['results'].append('Facebook scheduled')
         out['post_ids']['Facebook'] = pid
     except Exception as e:  # noqa
