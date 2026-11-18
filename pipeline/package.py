@@ -8,10 +8,13 @@ The package carries everything the renderer needs, so no topic, script or image-
   "hook": "opening line shown above the picture"  or  {"line": "...", "focus": "..."},   (optional, default = script opening)
   "art_style": "indian_storybook|sketchbook_doodle|whimsical_indian|editorial_pencil|stickman_sepia|village_storybook",
                                                                      (optional, default = the art_style input; when that is empty or random too, one of these is picked at random)
+  "voice_style": "delivery style for this script",                    (optional, written for every script; sent after the Iapetus voice description; default style when empty)
+  "random_bg": true,                                                 (optional, default false = plain black screen; true = one random artwork background)
+  "bgm": true,                                                       (optional, default false = no background music; true = a song picked by the mood)
   "scenes": [{"narration": "Hindi in Devanagari", "image_prompt": "English prompt used as written"}, ...]
 }
 
-The mood picks the background music: one random song named <mood>_NN or neutral_NN in music_hindi/ (see music_picker.py).
+The mood picks the background music (only when bgm is true): one random song named <mood>_NN or neutral_NN in music_hindi/ (see music_picker.py).
 
 Same checks as the n8n 'Claude Package' node.
 """
@@ -21,10 +24,17 @@ from . import script, styles
 
 MAX_PROMPT = 1900
 MUSIC_MOODS = ('motivational', 'emotional', 'neutral')
+_TRUE = ('1', 'true', 'yes', 'y', 'on')
 
 
 def _s(v):
     return str(v if v is not None else '').strip()
+
+
+def _flag(v):
+    if isinstance(v, bool):
+        return v
+    return _s(v).lower() in _TRUE
 
 
 def _style_key(value):
@@ -40,7 +50,7 @@ def _style_key(value):
 
 
 def parse(raw):
-    """Returns {'prep', 'scenes', 'hook', 'style_key'}; raises RuntimeError with a readable message when the package is unusable."""
+    """Returns {'prep', 'scenes', 'hook', 'style_key', 'voice_style', 'random_bg', 'bgm'}; raises RuntimeError with a readable message when the package is unusable."""
     try:
         b = json.loads(raw)
     except ValueError as e:
@@ -80,4 +90,7 @@ def parse(raw):
         hook = _s(hook)
     else:
         hook = None
-    return {'prep': prep, 'scenes': scenes, 'hook': hook or None, 'style_key': _style_key(b.get('art_style') or b.get('artStyle'))}
+    return {'prep': prep, 'scenes': scenes, 'hook': hook or None, 'style_key': _style_key(b.get('art_style') or b.get('artStyle')),
+            'voice_style': _s(b.get('voice_style') or b.get('style_instruction') or b.get('gemini_style')),
+            'random_bg': _flag(b.get('random_bg')) or _s(b.get('background')).lower() == 'random',
+            'bgm': _flag(b.get('bgm')) or _flag(b.get('music'))}
