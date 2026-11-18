@@ -14,7 +14,10 @@ import json
 import os
 import subprocess
 
-TAIL = 0.3  # seconds the thumbnail stays on screen at the very end (as short as one stable frame group can be)
+# Seconds the thumbnail stays on screen at the very end. It was 0.3s, which left only ~9 frames: when Buffer rounded the offset down or
+# snapped to a neighbouring frame it landed in the black fade-out just before the tail. 1.0s puts the offset (the middle of the tail,
+# 0.5s in) well inside the thumbnail, even with some timing error.
+TAIL = 1.0
 IMG_EXT = ('.png', '.jpg', '.jpeg', '.webp')
 
 
