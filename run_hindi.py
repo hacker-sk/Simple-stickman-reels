@@ -7,6 +7,7 @@ The voice (Gemini prebuilt Iapetus + description + the delivery style of the scr
 same voice text is built by pipeline/voice_patch.py for prepare (pipeline/flow_images.py) and for this job, so the voice is the same whichever
 job makes it. Forced-alignment-first word timing is installed from there too.
 pipeline/look_patch.py switches the look and sound by payload: black background unless random_bg, small captions under the square, no music unless bgm.
+pipeline/thumb_frame.py adds the thumbnail (THUMB_DIR) as a 0.3 second silent last frame right before the upload and writes its position for Buffer.
 """
 import os
 import runpy
@@ -33,6 +34,11 @@ if __name__ == '__main__':
         look_patch.install(rh)                    # black background, small captions under the square, music only on request
     except Exception as e:  # noqa
         print('[run_hindi] look patch not installed, the old look and music are used: ' + str(e)[:200], flush=True)
+    try:
+        from pipeline import thumb_frame
+        thumb_frame.install(rh)                   # thumbnail as a very short last frame (only when THUMB_DIR has an image)
+    except Exception as e:  # noqa
+        print('[run_hindi] thumbnail end frame not installed, the video gets no end frame: ' + str(e)[:200], flush=True)
     target = os.environ.get('RENDER_TARGET', '').strip()
     if target and os.path.basename(target) != 'render_hindi.py':
         # render_hindi_flow.py imports render_hindi, which is the module patched above
