@@ -8,143 +8,106 @@
   "art_style": "indian_storybook",
   "voice_style": "Warm, reflective storyteller voice: soft and curious at the start, calm and steady for the lake scene, a thoughtful pause after the question about whom you would choose, a slight rise of suspense before Nakul's name, gentle and kind for Yudhishthira's answer, and tender, emotional and personal in the last part, with the final line spoken softly like a message to a loved one. Unhurried pace.",
   "random_bg": false,
-  "bgm": false,
-  "thumbnail_prompt": "Vertical 9:16 eye-catching emotional thumbnail composition. Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, stands beside a calm forest lake with a gentle sad face, one hand on his heart. Behind him the Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, glows softly above the water. In front of him Nakul, a slim gentle young prince in a yellow dhoti, lies in a warm golden spotlight, while three other brothers lie in soft shadow behind. Subject centered with space above and below. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks.",
+  "bgm": true,
   "scenes": [
     {
-      "narration": "युधिष्ठिर के पास अपने चार मृत भाइयों में से",
+      "narration": "चार भाइयों में से सिर्फ एक को ज़िंदा करने का मौका मिला...",
       "image_prompt": "Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, stands by a forest lake and looks down sadly at four young princes lying still on the grass in dark blue, green, yellow and maroon dhotis. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "सिर्फ एक को दोबारा जीवित करने का विकल्प था।",
+      "narration": "और युधिष्ठिर ने अर्जुन या भीम को नहीं, बल्कि नकुल को चुना।",
       "image_prompt": "A close view of one young prince in a yellow dhoti lying on the grass while a soft golden glow gently rises over him, and above him a single raised finger of Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "लेकिन उन्होंने अर्जुन या भीम को नहीं चुना।",
-      "image_prompt": "Arjun, a lean young archer in a dark blue dhoti, and Bhima, a broad muscular young man in a green dhoti, lie still on the grass by the lake, while Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, gently shakes his head and turns away. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "आखिर क्यों?",
+      "image_prompt": "A close-up of Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, with a thoughtful questioning face and slightly raised eyebrows, a single glowing lotus floating beside him, soft evening light, forest trees blurred behind. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "और इसकी जो वजह उन्होंने बताई,",
-      "image_prompt": "A close-up of Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, speaking calmly with kind, thoughtful eyes, soft evening light on his face, forest trees blurred behind. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "वो महाभारत के मेरे पसंदीदा प्रसंगों में से एक है।",
+      "narration": "महाभारत का ये किस्सा शायद आपको ज़िंदगी की एक बहुत बड़ी सीख दे जाएगा।",
       "image_prompt": "An old open book of palm-leaf style pages resting on a wooden stand, glowing softly with warm golden light, with a tiny glowing lotus and a small oil lamp beside it, in a quiet room with a mud wall behind. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "ये उस समय की बात है",
-      "image_prompt": "An old winding forest path at dusk with tall trees, soft golden light between the leaves and a few fireflies, a feeling of a long-ago time, no people. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "जब पांडवों का वनवास लगभग समाप्त होने वाला था।",
+      "narration": "ये उस समय की बात है जब पांडव वनवास में थे।",
       "image_prompt": "Five brothers in simple forest clothes rest outside a small thatched hut in the forest: Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, Arjun, a lean young archer in a dark blue dhoti, Bhima, a broad muscular young man in a green dhoti, Nakul, a slim gentle young prince in a yellow dhoti, and Sahadev, a slim young prince in a maroon dhoti, all tired but hopeful as the sun sets. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "एक दिन चारों भाई पानी की तलाश में",
+      "narration": "एक दिन चारों भाई प्यासे थे।",
       "image_prompt": "Four brothers walk through a dry, dusty forest looking thirsty and tired: Arjun, a lean young archer in a dark blue dhoti, Bhima, a broad muscular young man in a green dhoti, Nakul, a slim gentle young prince in a yellow dhoti, and Sahadev, a slim young prince in a maroon dhoti, under a bright afternoon sun. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "एक सरोवर के पास पहुँचे।",
-      "image_prompt": "A calm, clear forest lake with lotus flowers and tall trees around it, glowing softly in golden light, with a faint mysterious mist over the water, no people. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "पानी की तलाश में नकुल एक सरोवर के पास पहुँचे।",
+      "image_prompt": "Nakul, a slim gentle young prince in a yellow dhoti, walks alone out of the trees toward a calm, clear forest lake with lotus flowers, glowing softly in golden light with a faint mysterious mist over the water. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "तभी एक आवाज़ आई,",
-      "image_prompt": "The four brothers, Arjun in a dark blue dhoti, Bhima in a green dhoti, Nakul in a yellow dhoti and Sahadev in a maroon dhoti, stop and look around in surprise on the lake shore as a pale glowing mist swirls above the water. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "तभी एक आवाज़ आई...",
+      "image_prompt": "Nakul, a slim gentle young prince in a yellow dhoti, stops and looks around in surprise on the lake shore as a pale glowing mist swirls above the water. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "पानी पीने से पहले मेरे सवालों के जवाब दो।",
+      "narration": "इस सरोवर का पानी पीने से पहले मेरे सवालों के जवाब दो।",
       "image_prompt": "A faint glowing blue-and-gold shape of a spirit rises from the lake water, the Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, one hand raised in warning, ripples spreading across the water. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "लेकिन एक-एक करके सभी भाइयों ने उस आवाज़ को अनसुना किया,",
-      "image_prompt": "The four brothers kneel one after another at the lake edge, cupping water in their hands and ignoring the glowing spirit behind them: Arjun in a dark blue dhoti, Bhima in a green dhoti, Nakul in a yellow dhoti and Sahadev in a maroon dhoti. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "लेकिन नकुल ने उस आवाज़ को अनसुना किया और पानी पी लिया।",
+      "image_prompt": "Nakul, a slim gentle young prince in a yellow dhoti, kneels at the lake edge cupping water in his hands and ignoring the glowing blue-and-gold spirit behind him, a thirsty and tired face. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "पानी पिया और वहीं मृत होकर गिर पड़े।",
-      "image_prompt": "One young prince in a green dhoti collapses sideways beside the lake, his hand still open near the water, a small silver cup rolling on the grass, the other brothers already lying still in the background, quiet and sad mood. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "और वो वहीं मृत होकर गिर पड़े।",
+      "image_prompt": "Nakul, a slim gentle young prince in a yellow dhoti, collapses sideways beside the lake, his hand still open near the water, a small silver cup rolling on the grass, a quiet and sad mood in the fading light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "सबसे पहले नकुल, फिर सहदेव,",
-      "image_prompt": "Nakul, a slim gentle young prince in a yellow dhoti, and Sahadev, a slim young prince in a maroon dhoti, lie side by side on the grass at the lake shore, eyes closed and peaceful, soft light on the water. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "फिर सहदेव गए... अर्जुन गए... और आखिर में भीम भी।",
+      "image_prompt": "Sahadev, a slim young prince in a maroon dhoti, Arjun, a lean young archer in a dark blue dhoti with his bow fallen beside him, and Bhima, a broad muscular young man in a green dhoti with his big mace in the grass, lie still one after another near the lake in the fading light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "उसके बाद अर्जुन और आखिर में भीम।",
-      "image_prompt": "Arjun, a lean young archer in a dark blue dhoti, with his bow fallen beside him, and Bhima, a broad muscular young man in a green dhoti, with his big mace lying in the grass, both lying still near the lake in the fading light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "चारों भाई सरोवर के किनारे मृत पड़े थे।",
+      "image_prompt": "A wide quiet view of four young princes in dark blue, green, yellow and maroon dhotis lying still in a row on the grass at the edge of a lake at twilight, lotus flowers on the water, a sad and silent mood, a soft silver moon rising. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "जब युधिष्ठिर वहाँ पहुँचे,",
-      "image_prompt": "Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, walks quickly through the trees toward the lake with a worried face, golden evening light behind him. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "जब युधिष्ठिर वहाँ पहुँचे, तो उन्होंने देखा कि एक यक्ष उनके भाइयों के पास खड़ा है।",
+      "image_prompt": "Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, stands frozen in shock at the lake shore with wide eyes, while the Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, stands near his four fallen brothers in dark blue, green, yellow and maroon dhotis. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "तो उन्होंने अपने चारों भाइयों को सरोवर के किनारे मृत पाया।",
-      "image_prompt": "Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, stands frozen in shock at the lake shore with wide eyes and a trembling hand over his mouth, while his four brothers in dark blue, green, yellow and maroon dhotis lie still on the grass in front of him. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "यक्ष ने युधिष्ठिर से कई सवाल पूछे।",
+      "image_prompt": "The Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, stands above the lake and leans toward Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, asking questions with one hand raised, golden ripples on the water. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "वहाँ एक यक्ष खड़ा था,",
-      "image_prompt": "The Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, stands on the surface of the lake with his arms folded, shimmering light around him and lotus flowers floating below. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "युधिष्ठिर ने हर सवाल का सही जवाब दिया।",
+      "image_prompt": "Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, stands calmly at the lake shore with folded hands answering with steady, wise eyes, while the Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, listens above the water. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "जो उस सरोवर की रक्षा कर रहा था।",
-      "image_prompt": "A wide view of the lake at twilight with the Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, standing watchfully over the water like a guardian, tall trees circling the shore and a soft silver moon rising. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "उनके जवाबों से प्रसन्न होकर यक्ष ने कहा, तुम्हारे चारों भाइयों में से किसी एक को जीवित करने का वरदान माँग लो।",
+      "image_prompt": "The Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, smiles warmly and points toward the four brothers lying on the grass in dark blue, green, yellow and maroon dhotis, with four soft golden lights glowing above them, while Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, watches in stunned silence. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "युधिष्ठिर ने उसके सभी सवालों के जवाब दिए।",
-      "image_prompt": "Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, stands calmly at the lake shore with folded hands answering, while the Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, listens above the water. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "उनके जवाबों से प्रसन्न होकर यक्ष ने कहा,",
-      "image_prompt": "The Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, smiles warmly with a soft golden light around him, looking pleased, with lotus petals drifting in the air. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "मैं तुमसे प्रसन्न हूँ।",
-      "image_prompt": "The Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, holds out an open blessing hand toward Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, who looks up with humble eyes, warm light between them. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "अपने चार भाइयों में से किसी एक को चुन लो, मैं उसे जीवित कर दूँगा।",
-      "image_prompt": "The Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, points toward the four brothers lying on the grass in dark blue, green, yellow and maroon dhotis, with four soft golden lights glowing above them, while Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, watches in stunned silence. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "अब ज़रा सोचिए कि आप किसे चुनते?",
+      "narration": "अब सोचिए...",
       "image_prompt": "Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, stands deep in thought with a hand on his chin, and four soft glowing portraits of the brothers in dark blue, green, yellow and maroon float above him like thought bubbles, a quiet moment of choice. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "आगे युद्ध होने वाला था।",
+      "narration": "आने वाला समय युद्ध का था।",
       "image_prompt": "A wide dark battlefield at dawn with heavy storm clouds, rows of chariots, flags and tiny soldiers on both sides of a wide field, a heavy tense mood with a red glow on the horizon, no close-up characters. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "अर्जुन उस समय के सबसे महान धनुर्धरों में से एक था।",
+      "narration": "अर्जुन दुनिया के महानतम धनुर्धरों में से एक था।",
       "image_prompt": "Arjun, a lean young archer in a dark blue dhoti, stands tall on a rocky hill drawing a long glowing bow with a golden arrow, a fierce focused face and a brave heroic pose, a red sunset sky behind. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "भीम में दस हज़ार हाथियों जितना बल था।",
+      "narration": "भीम दस हज़ार हाथियों जितना बल रखता था।",
       "image_prompt": "Bhima, a broad muscular young man in a green dhoti, lifts his huge mace over his shoulder with a mighty proud stance, and behind him a faint golden outline of ten large elephants shows his great strength, dusty ground and warm light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "और इन दोनों के बिना युधिष्ठिर के लिए",
-      "image_prompt": "Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, stands alone on a grassy field with a worried face, and two empty spaces beside him glow as faint dim outlines where Arjun and Bhima would have stood, a lonely mood. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "युधिष्ठिर चाहते तो इन दोनों में से किसी को भी चुन सकते थे।",
+      "image_prompt": "Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, stands between Arjun, a lean young archer in a dark blue dhoti, and Bhima, a broad muscular young man in a green dhoti, both lying still on the grass, his hand held out and hovering over them, soft glowing light and drifting lotus petals. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "अपना खोया हुआ राज्य वापस पाना लगभग असंभव था।",
-      "image_prompt": "A grand golden palace of an Indian kingdom far away on a distant hill, half hidden in mist, with a long empty road leading toward it, and a small lonely Yudhishthira, a calm young prince in a white dhoti and a saffron shawl, standing tiny at the start of the road looking at it. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "लेकिन उन्होंने किसे चुना?",
-      "image_prompt": "A close-up of the hand of Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, held out and hovering over the four sleeping brothers in dark blue, green, yellow and maroon dhotis, a suspenseful moment with soft glowing light and drifting lotus petals. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "नकुल को!",
+      "narration": "लेकिन उन्होंने चुना... नकुल को!",
       "image_prompt": "Nakul, a slim gentle young prince in a yellow dhoti, lies on the grass wrapped in a bright warm golden spotlight that rises toward the sky, all the other brothers dim in the shadows around him, a magical dramatic moment. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "यह सुनकर यक्ष भी हैरान रह गया।",
-      "image_prompt": "The Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, looks astonished with wide eyes and a slightly open mouth, his glow flickering in surprise above the lake. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "यक्ष भी हैरान रह गया। उसने पूछा, आखिर नकुल ही क्यों?",
+      "image_prompt": "The Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, looks astonished with wide eyes and leans down toward Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, with a curious questioning look, his glow flickering above the lake. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "उसने पूछा, तुमने नकुल को ही क्यों चुना?",
-      "image_prompt": "The Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, leans down toward Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, with a curious questioning look, a soft golden glow between them. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "तब युधिष्ठिर ने जवाब दिया,",
+      "narration": "तब युधिष्ठिर ने जवाब दिया...",
       "image_prompt": "Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, looks up with a gentle smile and peaceful eyes, ready to answer, soft golden light on his face and the lake shining behind him. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
@@ -156,76 +119,44 @@
       "image_prompt": "Kunti, a dignified Indian queen in a red saree, hugs her young son Yudhishthira, a small boy with a white dhoti and a saffron shawl, with a loving smile in a warm palace courtyard. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "नकुल माद्री का पुत्र है।",
+      "narration": "इसलिए मैं चाहता हूँ कि माद्री का भी एक पुत्र जीवित रहे।",
       "image_prompt": "Madri, a gentle Indian queen in a pale pink saree, holds her young son Nakul, a small boy in a yellow dhoti, tenderly in her arms in a quiet palace courtyard, soft warm light and a gentle smile. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "इसलिए मैं चाहता हूँ कि",
-      "image_prompt": "Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, places one hand over his heart with sincere, kind eyes, a soft glow around his chest, the lake blurred behind him. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "दोनों माताओं का एक-एक पुत्र जीवित रहे।",
+      "narration": "न्याय यही है कि दोनों माताओं को एक-एक पुत्र मिले।",
       "image_prompt": "Kunti, a dignified Indian queen in a red saree, and Madri, a gentle Indian queen in a pale pink saree, stand side by side in soft golden light, Kunti with her grown son Yudhishthira in a white dhoti and a saffron shawl and Madri with her grown son Nakul in a yellow dhoti, all smiling gently, a warm and peaceful family picture. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "युधिष्ठिर का यह जवाब सुनकर यक्ष इतना प्रसन्न हुआ",
-      "image_prompt": "The Yaksha, a tall glowing translucent blue-and-gold spirit with a calm wise face, bows his head gently toward Yudhishthira, a calm young prince with a short black beard, a white dhoti and a saffron shawl, with a moved and respectful expression and a bright golden light spreading over the lake. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "युधिष्ठिर के इस जवाब से प्रसन्न होकर यक्ष ने उनके चारों भाइयों को जीवित कर दिया।",
+      "image_prompt": "The four brothers wake up and sit up on the grass in a shower of golden light and floating lotus petals: Arjun in a dark blue dhoti, Bhima in a green dhoti, Nakul in a yellow dhoti and Sahadev in a maroon dhoti, while Yudhishthira, a calm young prince with a white dhoti and a saffron shawl, smiles with happy tears and the Yaksha glows warmly above the lake. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "कि उसने उनके चारों भाइयों को जीवित कर दिया।",
-      "image_prompt": "The four brothers wake up and sit up on the grass in a shower of golden light and floating lotus petals: Arjun in a dark blue dhoti, Bhima in a green dhoti, Nakul in a yellow dhoti and Sahadev in a maroon dhoti, while Yudhishthira, a calm young prince with a white dhoti and a saffron shawl, smiles with happy tears. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "लेकिन सच कहूँ तो, इस कहानी में मैं",
-      "image_prompt": "A quiet lake at sunset with soft golden ripples and a single lotus, calm and reflective, long tree shadows on the shore, a thoughtful peaceful mood, no people. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "युधिष्ठिर के बारे में नहीं, बल्कि नकुल के बारे में सोचता हूँ।",
+      "narration": "लेकिन इस कहानी में मुझे सबसे ज़्यादा सोचने पर मजबूर करने वाला किरदार युधिष्ठिर नहीं... नकुल है।",
       "image_prompt": "A gentle close-up portrait of Nakul, a slim gentle young prince in a yellow dhoti, standing quietly at the lake shore with a soft, humble, slightly shy smile, warm golden evening light on his face. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "वह न सबसे ताकतवर था",
-      "image_prompt": "Nakul, a slim gentle young prince in a yellow dhoti, stands small and quiet beside the huge Bhima, a broad muscular young man in a green dhoti with a big mace, who towers over him, a warm village field behind them. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "और न ही युद्ध में सबसे ज़्यादा उपयोगी।",
-      "image_prompt": "A wide battlefield with great warriors and chariots in the foreground, while Nakul, a slim gentle young prince in a yellow dhoti, stands small and unnoticed at the edge of the scene with a plain sword, dust in the golden light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "वो न सबसे ताकतवर था, न युद्ध में सबसे ज़्यादा उपयोगी।",
+      "image_prompt": "A wide battlefield with great warriors and chariots in the foreground, while Nakul, a slim gentle young prince in a yellow dhoti, stands small and unnoticed at the edge of the scene beside the huge Bhima, a broad muscular young man in a green dhoti with a big mace, dust in the golden light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
       "narration": "फिर भी उसे चुना गया।",
       "image_prompt": "Nakul, a slim gentle young prince in a yellow dhoti, stands in a warm gentle spotlight of golden light at the lake shore with surprised, touched eyes, a soft glow around him and the others in soft shadow. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "मुझे लगता है कि हममें से बहुत से लोग यह मानते हैं",
-      "image_prompt": "An ordinary young Indian man in a grey kurta sits alone on a village rooftop in the evening with a thoughtful face, looking at the sky, soft orange light and a few birds in the distance. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
+      "narration": "क्योंकि ज़िंदगी में हर बार सबसे ज़्यादा काबिल या सबसे ज़्यादा काम आने वाला इंसान ही नहीं चुना जाता।",
+      "image_prompt": "An ordinary young Indian man in a grey kurta stands at the back of a busy village market crowd, waiting quietly while others in bright clothes are picked and noticed ahead of him, a lonely and unnoticed feeling, soft orange evening light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "कि किसी के द्वारा चुने जाने के लिए",
-      "image_prompt": "An ordinary young Indian man in a grey kurta stands at the back of a busy village market crowd, waiting quietly while others in bright clothes are picked and noticed ahead of him, a lonely and unnoticed feeling. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "सबसे ज़्यादा काबिल या सबसे ज़्यादा काम आने वाला इंसान होना ज़रूरी है।",
-      "image_prompt": "An ordinary young Indian man in a grey kurta climbs a very tall wooden ladder toward a glowing golden trophy high in the sky, looking small and tired against the huge ladder, a wide golden-hour sky behind. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "लेकिन कभी न कभी किसी ने आपको भी तब चुना होगा,",
+      "narration": "कभी-कभी कोई आपको सिर्फ इसलिए चुनता है... क्योंकि आप उसके लिए मायने रखते हैं।",
       "image_prompt": "A warm kind hand reaches out of the soft golden light toward an ordinary young Indian man in a grey kurta, who looks up in surprise and hope, a gentle glow between their hands. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "जब आप सबसे बेहतर विकल्प नहीं थे।",
+      "narration": "अगर आपकी ज़िंदगी में भी कोई ऐसा इंसान है, जिसने आपको तब चुना जब आप सबसे बेहतर विकल्प नहीं थे...",
       "image_prompt": "An ordinary young Indian man in a grey kurta stands smiling shyly in a village courtyard, his hand held warmly by a friend in a bright orange kurta, while other more confident people stand a little behind them, a feeling of being chosen, soft golden light. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     },
     {
-      "narration": "ये कहानी उस इंसान को ज़रूर भेजना,",
+      "narration": "तो ये कहानी उसे ज़रूर भेजना।",
       "image_prompt": "A close view of two hands holding a simple phone with a glowing envelope and a small heart rising from the screen, a warm lamp glow in a cozy room and soft golden light, no readable text. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "क्योंकि शायद उसे पता भी नहीं",
-      "image_prompt": "A kind friend in an orange kurta sits on a village porch in the evening, smiling peacefully at the sunset, completely unaware, a cup of tea in hand and soft light on his face. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
-    },
-    {
-      "narration": "कि उसका आपको चुनना आपके लिए कितना मायने रखता है।",
-      "image_prompt": "Two friends, an ordinary young Indian man in a grey kurta and a friend in an orange kurta, hug warmly under a glowing evening sky, a soft golden heart of light between them and lotus petals floating around, a tender emotional ending. Polished 2D hand-drawn Indian storybook illustration, anime-inspired cartoon aesthetic, bold clean dark outlines, expressive simple characters, warm earthy color palette, soft cel-shading, subtle hand-painted textures, richly detailed rural environments, and beautiful cinematic lighting; consistent character designs and proportions, no text, logos, or watermarks."
     }
   ]
 }
