@@ -1,67 +1,23 @@
-name: Hindi Shorts
+name: Simple Stickman Reel
 
-# Hindi portrait Shorts, fully on GitHub Actions: topic -> script -> image prompts -> render -> Buffer.
-# Manual run (GitHub Mobile): Actions > Hindi Shorts > Run workflow, then fill in an idea OR a finished script (or leave both empty).
-# Package from Claude chat: pushing jobs/package.json starts a run that uses it as the package input (renders and posts to Buffer).
-# Scheduled run: every 3.5 hours between 10:00 and 22:00 IST. It only runs when the repository variable
-# SHORTS_SCHEDULE_ENABLED is "true", so it stays off until the n8n schedule has been switched off.
-# Art style: pick one of the six prebuilt styles, or leave "random" (the default). A chat package can also carry its own
-# "art_style"; when neither a package style nor a chosen style exists (scheduled runs too), one style is picked at random.
-#
-# Google Flow images (package runs only) use three jobs: prepare -> flow -> make.
-#   prepare: makes the voiceover, works out the word timing of that voice by FORCED ALIGNMENT of the known script (falls back to the
-#            renderer's Whisper timing, then to an estimate from the voice length), takes every scene's start time from it, tags each
-#            image prompt with its scene number at the very beginning ([s01], [s02] ...) and uploads voice + word timing + tagged
-#            prompts as the "flow-prep" artifact.
-#   flow:    only the browser work, in ONE Flow session (one browser launch, one login). Downloads "flow-prep", then run_flow.js
-#            generates the scene images with Google Flow (ZAPI FLOW extension, same setup as flow-batch.yml, 10 minute wait cap; it also
-#            stops at once when Flow shows "We noticed some unusual activity"), matches every image to its prompt through Flow's own
-#            media ids, saves it as scene_NN.<ext>, retries scenes that have no usable image, and uploads the images + a manifest as
-#            the "flow-images" artifact.
-#   make:    always runs afterwards (also when prepare or flow failed). Reuses the prepared voice and word timing only when the
-#            narration hash matches (otherwise it makes its own voice and runs its own Whisper), gives each scene its scene_NN image,
-#            and the normal providers (IMAGE_PROVIDER_ORDER, Cloudflare first ...) make every image that is missing.
-#            The log line "VOICE CASE:" says which case happened.
-# If prepare fails, Flow is skipped and the normal providers make all images.
-# Switch Flow off with the repository variable FLOW_ENABLED = "false". Optional variable FLOW_MODEL (default Nano Banana Lite).
-# Flow image shape: square by default. Set the repository variable FLOW_ASPECT to portrait (or landscape, 3:4, 4:3) to change it.
-# Needs the same FLOW_COOKIES_B64 secret and FLOW_PROJECT_URL variable as flow-batch.yml; without them Flow is skipped.
-# Python packages: prepare and make install the SAME pinned versions (constraints.txt, CPU torch 2.8.0) on Ubuntu 24.04.
+# One job: payload (package JSON from Claude chat) -> voice -> Cloudflare images -> video -> Buffer.
+# Chat package: pushing jobs/package.json starts a run that uses it.
+# Manual run (GitHub Mobile): Actions > Simple Stickman Reel > Run workflow, then paste the package JSON.
+# Secrets: GEMINI_API_KEY, GEMINI_API_KEY_2, CF_ACCOUNT_ID, CF_API_TOKEN, CF_ACCOUNT_ID_2, CF_API_TOKEN_2, BUFFER_TOKEN.
+# Variables (or secrets): BUFFER_YOUTUBE_CHANNEL_ID, BUFFER_INSTAGRAM_CHANNEL_ID, BUFFER_FACEBOOK_CHANNEL_ID (optional).
+# Look: plain black background, no music, always. Art style: from the package, else the art_style input, else random.
 
 on:
-  schedule:
-    - cron: "30 4 * * *"    # 10:00 IST
-    - cron: "0 8 * * *"     # 13:30 IST
-    - cron: "30 11 * * *"   # 17:00 IST
-    - cron: "0 15 * * *"    # 20:30 IST
   push:
     paths:
       - "jobs/package.json"
   workflow_dispatch:
     inputs:
-      idea:
-        description: "Idea for the video (Hindi, Hinglish or English). Leave empty for an automatic topic."
-        required: false
-        default: ""
-      script:
-        description: "Finished Hindi script, used word for word. Leave empty to write the script from the idea."
-        required: false
-        default: ""
       package:
-        description: "Finished package JSON from Claude chat (title, description, mood, hook, scenes with narration + image_prompt). Skips topic, script and image-prompt steps. Leave empty normally."
-        required: false
-        default: ""
-      script_mode:
-        description: "Automatic topics only: script style"
-        required: false
-        type: choice
-        default: auto
-        options:
-          - auto
-          - truth
-          - story
+        description: "Package JSON from Claude chat (title, description, hook, art_style, voice_style, scenes with narration + image_prompt)"
+        required: true
       art_style:
-        description: "Art style (random = pick one of the prebuilt styles)"
+        description: "Art style when the package has none (random = one of the six)"
         required: false
         type: choice
         default: random
@@ -78,199 +34,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: hindi-shorts
+  group: simple-stickman-reel
   cancel-in-progress: false
 
 jobs:
-  prepare:
-    if: github.event_name != 'schedule' && vars.FLOW_ENABLED != 'false'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    outputs:
-      flow: ${{ steps.prep.outputs.flow }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check the Flow setup and the package
-        id: pkg
-        env:
-          PACKAGE_INPUT: ${{ inputs.package }}
-          FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
-          FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
-        run: |
-          if [ -z "$FLOW_COOKIES_B64" ] || [ -z "$FLOW_URL" ]; then
-            echo "::warning::FLOW_COOKIES_B64 secret or FLOW_PROJECT_URL variable is missing, Flow is skipped"
-            exit 0
-          fi
-          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ -f jobs/package.json ]; then
-            cp jobs/package.json /tmp/package.json
-          else
-            printf '%s' "$PACKAGE_INPUT" > /tmp/package.json
-          fi
-          if [ -s /tmp/package.json ]; then
-            echo "go=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::No package given (not a package run), Flow is skipped"
-          fi
-
-      - uses: actions/setup-python@v5
-        if: steps.pkg.outputs.go == 'true'
-        with:
-          python-version: "3.11"
-          cache: pip
-
-      # ffmpeg: a cached static build instead of apt (apt took 21 minutes on a slow mirror). See pipeline/setup_ffmpeg.sh.
-      - name: Cache ffmpeg
-        if: steps.pkg.outputs.go == 'true'
-        uses: actions/cache@v4
-        with:
-          path: ~/ffmpeg-static
-          key: ffmpeg-static-v1
-
-      - name: Install ffmpeg
-        if: steps.pkg.outputs.go == 'true'
-        run: bash pipeline/setup_ffmpeg.sh
-
-      - name: Install Python packages
-        if: steps.pkg.outputs.go == 'true'
-        run: |
-          # Same two commands as the make job: CPU torch first, then everything else under the shared version pins.
-          pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu || echo "::warning::torch install failed, word timing will fall back to an estimate"
-          pip install -c constraints.txt -r requirements.txt gradio_client || echo "::warning::requirements install failed, word timing will fall back to an estimate"
-
-      - name: Cache Whisper and alignment models
-        if: steps.pkg.outputs.go == 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/huggingface
-            ~/.cache/torch
-          key: whisperx-large-v3-turbo-hi-v2
-
-      - name: Prepare Flow prompts (voice, forced-alignment timing, then scene-tagged prompts)
-        id: prep
-        if: steps.pkg.outputs.go == 'true'
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
-          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
-          GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
-          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
-          GEMINI_API_KEY_6: ${{ secrets.GEMINI_API_KEY_6 }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
-        run: |
-          python pipeline/flow_images.py prepare --package /tmp/package.json \
-            --prompts flow-batch/prompts/shorts_flow.json --meta flow-batch/prompts/shorts_flow_meta.json \
-            --voice flow-batch/prompts/shorts_flow_voice.wav \
-            || echo "::warning::Flow prompt preparation failed, Flow is skipped"
-
-      - name: Upload prepared voice, word timing and tagged prompts
-        if: steps.prep.outputs.flow == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: flow-prep
-          path: |
-            flow-batch/prompts/shorts_flow.json
-            flow-batch/prompts/shorts_flow_meta.json
-            flow-batch/prompts/shorts_flow_voice.wav
-            flow-batch/prompts/shorts_flow_words.json
-          if-no-files-found: ignore
-          retention-days: 3
-
-  flow:
-    needs: prepare
-    if: needs.prepare.outputs.flow == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Get the tagged prompts
-        uses: actions/download-artifact@v4
-        with:
-          name: flow-prep
-          path: flow-batch/prompts
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Download ZAPI Flow extension
-        run: |
-          EXT_ID=debadkiomlbdambamdpdlgdkgnedcjil
-          DEST=flow-batch/extension/zapi-flow
-          if [ ! -f "$DEST/manifest.json" ]; then
-            mkdir -p "$DEST"
-            curl -fsSL -o /tmp/zapi.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=126.0&acceptformat=crx2,crx3&x=id%3D${EXT_ID}%26uc"
-            unzip -o -q /tmp/zapi.crx -d "$DEST" || test -f "$DEST/manifest.json"
-          fi
-          rm -rf "$DEST/_metadata"
-          grep -m1 '"version"' "$DEST/manifest.json"
-
-      - name: Install Flow dependencies
-        working-directory: flow-batch
-        run: |
-          npm install
-          npx playwright install --with-deps chromium
-          sudo apt-get install -y xvfb
-
-      - name: Restore saved Flow session
-        uses: actions/cache/restore@v4
-        with:
-          path: flow-batch/session
-          key: flow-session-${{ github.run_id }}
-          restore-keys: |
-            flow-session-
-
-      - name: Run Flow batch (the scenes, one session)
-        continue-on-error: true
-        timeout-minutes: 22
-        working-directory: flow-batch
-        env:
-          FLOW_COOKIES_B64: ${{ secrets.FLOW_COOKIES_B64 }}
-          FLOW_URL: ${{ vars.FLOW_PROJECT_URL }}
-          PROMPTS_FILE: prompts/shorts_flow.json
-          FLOW_ASPECT: ${{ vars.FLOW_ASPECT || 'square' }}
-          FLOW_COUNT: "1"
-          FLOW_MODEL: ${{ vars.FLOW_MODEL || 'Nano Banana Lite' }}
-        run: |
-          # The scenes wait is at most 10 minutes (hard cap in run_flow.js) and stops at once on Flow's "unusual activity" error,
-          # then the images are collected. The step cap is a little longer so collection and upload still finish.
-          sed -i 's/"timeoutMinutes": *[0-9]*/"timeoutMinutes": 10/' config.json
-          xvfb-run -a --server-args="-screen 0 1440x900x24" node run_flow.js
-
-      - name: Save refreshed Flow session
-        if: always() && hashFiles('flow-batch/session/cookies.json') != ''
-        uses: actions/cache/save@v4
-        with:
-          path: flow-batch/session
-          key: flow-session-${{ github.run_id }}-${{ github.run_attempt }}
-
-      - name: Upload Flow images
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: flow-images
-          path: flow-batch/downloads/final
-          if-no-files-found: ignore
-          retention-days: 3
-
-      - name: Upload Flow debug files
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: flow-debug
-          path: |
-            flow-batch/downloads/rejected
-            flow-batch/debug
-          if-no-files-found: ignore
-          retention-days: 3
-
   make:
-    needs: [prepare, flow]
-    if: ${{ !cancelled() && (github.event_name != 'schedule' || vars.SHORTS_SCHEDULE_ENABLED == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
@@ -283,8 +51,7 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      # ffmpeg: the same cached static build as the prepare job (apt was very slow). Fonts: only the three small packages,
-      # kept as cached .deb files. See pipeline/setup_ffmpeg.sh and pipeline/setup_fonts.sh.
+      # ffmpeg: a cached static build (apt was very slow). Fonts: three small packages kept as cached .deb files.
       - name: Cache ffmpeg
         uses: actions/cache@v4
         with:
@@ -304,9 +71,8 @@ jobs:
 
       - name: Install Python packages
         run: |
-          # Same two commands as the prepare job: CPU torch first, then everything else under the shared version pins.
           pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu
-          pip install -c constraints.txt -r requirements.txt gradio_client
+          pip install -c constraints.txt -r requirements.txt
 
       - name: Cache Whisper and alignment models
         uses: actions/cache@v4
@@ -316,74 +82,24 @@ jobs:
             ~/.cache/torch
           key: whisperx-large-v3-turbo-hi-v2
 
-      - name: Get the prepared voice, word timing and tags
-        # Also after a failed Flow job. A missing artifact is not an error: the renderer then makes its own voice.
-        if: needs.prepare.result == 'success' && needs.prepare.outputs.flow == 'true'
-        continue-on-error: true
-        uses: actions/download-artifact@v4
-        with:
-          name: flow-prep
-          path: flow_in/prep
-
-      - name: Get Flow images
-        # Also after a failed Flow job: the images it did finish are still uploaded. A missing artifact is not an error.
-        if: needs.flow.result != 'skipped'
-        continue-on-error: true
-        uses: actions/download-artifact@v4
-        with:
-          name: flow-images
-          path: flow_in/images
-
       - name: Make the video and publish it
         id: make
         env:
-          IDEA: ${{ inputs.idea }}
-          SCRIPT: ${{ inputs.script }}
           PACKAGE: ${{ inputs.package }}
-          SCRIPT_MODE: ${{ inputs.script_mode }}
           ART_STYLE: ${{ inputs.art_style }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
-          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
-          GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
-          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
-          GEMINI_API_KEY_6: ${{ secrets.GEMINI_API_KEY_6 }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_TOKEN_2: ${{ secrets.HF_TOKEN_2 }}
-          HF_TOKEN_3: ${{ secrets.HF_TOKEN_3 }}
-          HF_TOKEN_4: ${{ secrets.HF_TOKEN_4 }}
-          HF_TOKEN_5: ${{ secrets.HF_TOKEN_5 }}
-          HF_TOKEN_6: ${{ secrets.HF_TOKEN_6 }}
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CF_ACCOUNT_ID_2: ${{ secrets.CF_ACCOUNT_ID_2 }}
           CF_API_TOKEN_2: ${{ secrets.CF_API_TOKEN_2 }}
-          CF_ACCOUNT_ID_3: ${{ secrets.CF_ACCOUNT_ID_3 }}
-          CF_API_TOKEN_3: ${{ secrets.CF_API_TOKEN_3 }}
-          CF_ACCOUNT_ID_4: ${{ secrets.CF_ACCOUNT_ID_4 }}
-          CF_API_TOKEN_4: ${{ secrets.CF_API_TOKEN_4 }}
-          CF_ACCOUNT_ID_5: ${{ secrets.CF_ACCOUNT_ID_5 }}
-          CF_API_TOKEN_5: ${{ secrets.CF_API_TOKEN_5 }}
-          CF_ACCOUNT_ID_6: ${{ secrets.CF_ACCOUNT_ID_6 }}
-          CF_API_TOKEN_6: ${{ secrets.CF_API_TOKEN_6 }}
-          COLAB_URL: ${{ secrets.COLAB_URL }}
-          COLAB_URL_SOURCE: ${{ secrets.COLAB_URL_SOURCE }}
-          COLAB_TOKEN: ${{ secrets.COLAB_TOKEN }}
           BUFFER_TOKEN: ${{ secrets.BUFFER_TOKEN }}
           BUFFER_YOUTUBE_CHANNEL_ID: ${{ vars.BUFFER_YOUTUBE_CHANNEL_ID || secrets.BUFFER_YOUTUBE_CHANNEL_ID }}
           BUFFER_INSTAGRAM_CHANNEL_ID: ${{ vars.BUFFER_INSTAGRAM_CHANNEL_ID || secrets.BUFFER_INSTAGRAM_CHANNEL_ID }}
           BUFFER_FACEBOOK_CHANNEL_ID: ${{ vars.BUFFER_FACEBOOK_CHANNEL_ID || secrets.BUFFER_FACEBOOK_CHANNEL_ID }}
-          # Cloudflare first; Hugging Face last because its credits can run out (HTTP 402). Override with the IMAGE_PROVIDER_ORDER variable.
-          IMAGE_PROVIDER_ORDER: ${{ vars.IMAGE_PROVIDER_ORDER || 'cloudflare,pollinations,hfspace' }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = "push" ] && [ -f jobs/package.json ]; then
             export PACKAGE="$(cat jobs/package.json)"
-          fi
-          if [ -d flow_in ]; then
-            export FLOW_DIR="$PWD/flow_in"
-            export RENDER_SCRIPT="$PWD/render_hindi_flow.py"
           fi
           python pipeline/run_shorts.py
 
@@ -392,23 +108,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "hindi-video-${{ github.run_number }}" output/video.mp4 \
-            --title "Hindi video ${{ github.run_number }}" --notes "Made by run ${{ github.run_id }}" || true
+          gh release create "reel-${{ github.run_number }}" output/video.mp4 \
+            --title "Reel ${{ github.run_number }}" --notes "Made by run ${{ github.run_id }}" || true
           # keep only the 20 newest releases
           gh release list --limit 100 --json tagName --jq '.[20:][].tagName' | xargs -r -I{} gh release delete {} --yes --cleanup-tag || true
-
-      - name: Save topic history
-        if: always() && steps.make.outputs.state_changed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add state/topic_history.json
-          if git diff --cached --quiet; then echo "No history change"; exit 0; fi
-          git commit -m "Update topic history (run ${{ github.run_id }})"
-          # Runs never overlap (concurrency group), so a rebase onto the latest main is always clean.
-          for i in 1 2 3 4 5; do
-            if git pull --rebase --autostash origin main && git push origin HEAD:main; then exit 0; fi
-            sleep $((i * 5))
-          done
-          echo "::error::Could not save state/topic_history.json after 5 tries"
-          exit 1

@@ -1,40 +1,30 @@
-"""Finished package written in Claude chat (the old n8n 'Claude Script Input' webhook, now the `package` workflow input).
-
-The package carries everything the renderer needs, so no topic, script or image-prompt step runs:
+"""Finished package written in Claude chat. It is the only input of the workflow: no topic, script or image-prompt step exists.
 
 {
-  "title": "...", "description": "...", "mood": "emotional",          (mood: motivational|emotional|neutral; the older inspiring|mysterious|dramatic|upbeat|calm still work)
-  "hashtags": ["..."], "tags": ["..."],                              (optional, same handling as the script step)
+  "title": "...", "description": "...",
+  "hashtags": ["..."],                                               (optional, shown at the end of the description)
   "hook": "opening line shown above the picture"  or  {"line": "...", "focus": "..."},   (optional, default = script opening)
   "art_style": "indian_storybook|sketchbook_doodle|whimsical_indian|editorial_pencil|stickman_sepia|village_storybook",
-                                                                     (optional, default = the art_style input; when that is empty or random too, one of these is picked at random)
-  "voice_style": "delivery style for this script",                    (optional, written for every script; sent after the Iapetus voice description; default style when empty)
-  "random_bg": true,                                                 (optional, default false = plain black screen; true = one random artwork background)
-  "bgm": true,                                                       (optional, default false = no background music; true = a song picked by the mood)
+                                                                     (optional, random when missing)
+  "voice_style": "delivery style for this script",                    (optional, default style when empty)
   "scenes": [{"narration": "Hindi in Devanagari", "image_prompt": "English prompt used as written"}, ...]
 }
 
-The mood picks the background music (only when bgm is true): one random song named <mood>_NN or neutral_NN in music_hindi/ (see music_picker.py).
-
-Same checks as the n8n 'Claude Package' node.
+Background is always plain black and there is never background music.
 """
 import json
+import re
+import unicodedata
 
-from . import script, styles
+from . import styles
 
 MAX_PROMPT = 1900
-MUSIC_MOODS = ('motivational', 'emotional', 'neutral')
-_TRUE = ('1', 'true', 'yes', 'y', 'on')
+NL = chr(10)
+_ENDS_P = re.compile(r'[,;:\u0964?!.]$')
 
 
 def _s(v):
     return str(v if v is not None else '').strip()
-
-
-def _flag(v):
-    if isinstance(v, bool):
-        return v
-    return _s(v).lower() in _TRUE
 
 
 def _style_key(value):
@@ -49,8 +39,33 @@ def _style_key(value):
     return None
 
 
+def _add_tag(out, seen, h):
+    t = re.sub(r'[#\s]+', '', str(h or ''))
+    t = ''.join(ch for ch in t if unicodedata.category(ch)[0] in 'LMN' or ch == '_')
+    if len(t) < 2 or len(t) > 40 or t.lower() in seen:
+        return
+    seen.add(t.lower())
+    out.append('#' + t)
+
+
+def _finish_punctuation(scenes):
+    """The voice takes its pauses from punctuation: make sure the narration ends with one and, when it has none at all, add light ones."""
+    ends = lambda t: bool(_ENDS_P.search(str(t).strip()))
+    if not any(ends(s['narration']) for s in scenes):
+        for i, s in enumerate(scenes):
+            t = s['narration'].strip()
+            if i == len(scenes) - 1:
+                s['narration'] = t + '\u0964'
+            elif i % 2 == 1:
+                s['narration'] = t + ','
+    else:
+        last = scenes[-1]['narration'].strip()
+        scenes[-1]['narration'] = last if ends(last) else last + '\u0964'
+    return scenes
+
+
 def parse(raw):
-    """Returns {'prep', 'scenes', 'hook', 'style_key', 'voice_style', 'random_bg', 'bgm'}; raises RuntimeError with a readable message when the package is unusable."""
+    """Returns {'prep', 'scenes', 'hook', 'style_key', 'voice_style'}; raises RuntimeError with a readable message when the package is unusable."""
     try:
         b = json.loads(raw)
     except ValueError as e:
@@ -62,9 +77,6 @@ def parse(raw):
         raise RuntimeError('package: title is missing')
     if not description:
         raise RuntimeError('package: description is missing')
-    mood = _s(b.get('mood')).lower()
-    if mood not in MUSIC_MOODS and mood not in script.MOODS:
-        raise RuntimeError('package: mood must be one of ' + ', '.join(MUSIC_MOODS))
     in_scenes = b.get('scenes') if isinstance(b.get('scenes'), list) else []
     if not in_scenes:
         raise RuntimeError('package: scenes list is empty')
@@ -74,15 +86,19 @@ def parse(raw):
         n, p = _s(s.get('narration')), _s(s.get('image_prompt'))
         if not n:
             raise RuntimeError('package: scene %d has no narration' % (i + 1))
-        if script._has_latin([{'narration': n}]):
+        if re.search(r'[A-Za-z]', n):
             raise RuntimeError('package: scene %d narration has Latin letters; write English words in Devanagari' % (i + 1))
         if len(p) < 40:
             raise RuntimeError('package: scene %d has no usable image_prompt' % (i + 1))
         scenes.append({'narration': n, 'image_prompt': p[:MAX_PROMPT]})
-    prep = script.prepare_narration({'title': title, 'description': description, 'hashtags': b.get('hashtags'),
-                                     'tags': [_s(t) for t in (b.get('tags') or []) if _s(t)] if isinstance(b.get('tags'), list) else [],
-                                     'mood': mood, 'scenes': scenes})
-    scenes = [{'narration': _s(s['narration']), 'image_prompt': _s(s['image_prompt'])} for s in prep['scenes']]
+    scenes = _finish_punctuation(scenes)
+    seen, tags = set(), []
+    for h in (b.get('hashtags') if isinstance(b.get('hashtags'), list) else [])[:10]:
+        _add_tag(tags, seen, h)
+    _add_tag(tags, seen, 'Shorts')
+    _add_tag(tags, seen, 'Hindi')
+    prep = {'title': title[:90], 'description': description + NL + NL + ' '.join(tags),
+            'mood': _s(b.get('mood')).lower() or 'emotional', 'scenes': scenes}
     hook = b.get('hook')
     if isinstance(hook, dict):
         hook = {'line': _s(hook.get('line') or hook.get('text')), 'focus': _s(hook.get('focus'))}
@@ -91,6 +107,4 @@ def parse(raw):
     else:
         hook = None
     return {'prep': prep, 'scenes': scenes, 'hook': hook or None, 'style_key': _style_key(b.get('art_style') or b.get('artStyle')),
-            'voice_style': _s(b.get('voice_style') or b.get('style_instruction') or b.get('gemini_style')),
-            'random_bg': _flag(b.get('random_bg')) or _s(b.get('background')).lower() == 'random',
-            'bgm': _flag(b.get('bgm')) or _flag(b.get('music'))}
+            'voice_style': _s(b.get('voice_style') or b.get('style_instruction') or b.get('gemini_style'))}
