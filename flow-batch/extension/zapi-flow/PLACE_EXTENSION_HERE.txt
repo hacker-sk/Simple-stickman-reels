@@ -1,3 +1,0 @@
-Put the unpacked ZAPI Flow extension in this folder so that manifest.json sits directly here:
-flow-batch/extension/zapi-flow/manifest.json
-Delete this file after adding the extension.
